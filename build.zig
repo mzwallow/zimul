@@ -1,14 +1,10 @@
 const std = @import("std");
 
+const Scanner = @import("wayland").Scanner;
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-
-    const mod = b.addModule("zimul", .{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
 
     const exe = b.addExecutable(.{
         .name = "zimul",
@@ -16,9 +12,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{
-                .{ .name = "zimul", .module = mod },
-            },
+            .link_libc = true,
         }),
     });
     b.installArtifact(exe);
@@ -31,38 +25,67 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
-    const wayland_exe = b.addExecutable(.{
-        .name = "wayland",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/window/platform/wayland/connection.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+    const xml_dep = b.dependency("xml", .{
+        .target = target,
+        .optimize = optimize,
     });
-    wayland_exe.root_module.link_libc = true;
-    wayland_exe.root_module.linkSystemLibrary("wayland-client", .{});
-    wayland_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/window/platform/wayland/xdg-shell-protocol.c"),
-    });
-    wayland_exe.root_module.addIncludePath(b.path("src/window/platform/wayland"));
-    b.installArtifact(wayland_exe);
 
-    const wayland_step = b.step("wayland", "Run Wayland window");
-    const wayland_cmd = b.addRunArtifact(wayland_exe);
-    wayland_step.dependOn(&wayland_cmd.step);
-    wayland_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| wayland_cmd.addArgs(args);
+    const wayland_scanner = b.createModule(.{
+        .root_source_file = b.path("src/wayland-scanner/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "xml", .module = xml_dep.module("xml") },
+        },
+    });
+
+    const scanner = Scanner.create(b, .{});
+    scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
+    scanner.generate("wl_compositor", 1);
+    scanner.generate("wl_shm", 1);
+    scanner.generate("xdg_wm_base", 1);
+
+    const wayland = b.createModule(.{
+        .root_source_file = scanner.result,
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.linkSystemLibrary("wayland-client", .{});
+    exe.root_module.addImport("wayland", wayland);
+
+    const linux_wayland_mod = b.createModule(.{
+        .root_source_file = b.path("src/window/linux/wayland.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    linux_wayland_mod.addImport("wayland", wayland);
+
+    const window_mod = b.createModule(.{
+        .root_source_file = b.path("src/window/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    window_mod.addImport("linux_wayland", linux_wayland_mod);
+    linux_wayland_mod.addImport("window", window_mod);
+
+    exe.root_module.addImport("window", window_mod);
+
+    // Tests
+    const test_step = b.step("test", "Run tests");
+
+    const linux_wayland_tests = b.addTest(.{ .root_module = linux_wayland_mod });
+    const run_linux_wayland_tests = b.addRunArtifact(linux_wayland_tests);
+    test_step.dependOn(&run_linux_wayland_tests.step);
+
+    const wayland_scanner_tests = b.addTest(.{ .root_module = wayland_scanner });
+    const run_wayland_scanner_tests = b.addRunArtifact(wayland_scanner_tests);
+    test_step.dependOn(&run_wayland_scanner_tests.step);
 
     // Check
     const exe_check = b.addExecutable(.{
         .name = "zimul",
         .root_module = exe.root_module,
     });
-    const wayland_exe_check = b.addExecutable(.{
-        .name = "wayland",
-        .root_module = wayland_exe.root_module,
-    });
     const check_step = b.step("check", "Check");
     check_step.dependOn(&exe_check.step);
-    check_step.dependOn(&wayland_exe_check.step);
 }

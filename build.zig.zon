@@ -25,13 +25,22 @@
     .fingerprint = 0x652d4f49928472cf, // Changing this has security and trust implications.
     // Tracks the earliest Zig version that the package considers to be a
     // supported use case.
-    .minimum_zig_version = "0.16.0-dev.2682+02142a54d",
+    .minimum_zig_version = "0.16.0",
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
     // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
-    .dependencies = .{},
+    .dependencies = .{
+        .xml = .{
+            .url = "git+https://github.com/ianprime0509/zig-xml#b97f2ab4868ae3cac9902b33a40d3f31d2df739d",
+            .hash = "xml-0.2.0-ZTbP3yI6AgB9Rpd2hQrueO63ib0Bm6mQiL_WB1t7JAmP",
+        },
+        .wayland = .{
+            .url = "git+https://codeberg.org/mzwallow/zig-wayland#4aa2894534b5b9280537e9a62c2c65d15b50fe34",
+            .hash = "wayland-0.6.0-dev-lQa1kqj-AQClxBuBCtRbdjZU52gVRCwpUFBygVS_ofWW",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

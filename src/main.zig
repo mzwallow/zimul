@@ -1,8 +1,6 @@
 const std = @import("std");
-const Io = std.Io;
+const window = @import("window");
 
-const zimul = @import("zimul");
-
-pub fn main(init: std.process.Init) !void {
-    _ = init; // autofix
+pub fn main() !void {
+    try window.run();
 }
