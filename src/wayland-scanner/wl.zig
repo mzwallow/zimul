@@ -10,6 +10,8 @@ const Client = @This();
 
 pub const Wl = struct {
     pub const Display = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn sync(display: *Display) !*Callback {
@@ -21,9 +23,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -36,10 +37,46 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
+        }
+
+        const Listener = extern struct {
+            @"error": ?*const fn (data: ?*anyopaque, display: *Display, object_id: ?*anyopaque, code: u32, message: [*:0]const u8) callconv(.c) void,
+            deleteId: ?*const fn (data: ?*anyopaque, display: *Display, id: u32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                @"error": ?*const fn (data: *T, display: *Display, object_id: ?*anyopaque, code: u32, message: [*:0]const u8) void = null,
+                deleteId: ?*const fn (data: *T, display: *Display, id: u32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .@"error" = if (handlers.@"error" != null) @"error" else null,
+                    .deleteId = if (handlers.deleteId != null) deleteId else null,
+                };
+
+                fn @"error"(ptr: ?*anyopaque, display_: *Display, object_id_: ?*anyopaque, code_: u32, message_: [*:0]const u8) callconv(.c) void {
+                    if (handlers.@"error") |h| {
+                        h(@ptrCast(@alignCast(ptr)), display_, object_id_, code_, message_);
+                    }
+                }
+                fn deleteId(ptr: ?*anyopaque, display_: *Display, id_: u32) callconv(.c) void {
+                    if (handlers.deleteId) |h| {
+                        h(@ptrCast(@alignCast(ptr)), display_, id_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
         }
 
         pub const Error = enum(u32) {
@@ -49,7 +86,7 @@ pub const Wl = struct {
             implementation = 3,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_display",
             .version = 1,
             .method_count = 2,
@@ -92,6 +129,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Registry = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn bind(registry: *Registry, name: u32, comptime T: type) !*T {
@@ -106,10 +145,46 @@ pub const Wl = struct {
                 T.interface.name,
                 T.interface.version,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
+        }
+
+        const Listener = extern struct {
+            global: ?*const fn (data: ?*anyopaque, registry: *Registry, name: u32, interface: [*:0]const u8, version: u32) callconv(.c) void,
+            globalRemove: ?*const fn (data: ?*anyopaque, registry: *Registry, name: u32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                global: ?*const fn (data: *T, registry: *Registry, name: u32, interface: [*:0]const u8, version: u32) void = null,
+                globalRemove: ?*const fn (data: *T, registry: *Registry, name: u32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .global = if (handlers.global != null) global else null,
+                    .globalRemove = if (handlers.globalRemove != null) globalRemove else null,
+                };
+
+                fn global(ptr: ?*anyopaque, registry_: *Registry, name_: u32, interface_: [*:0]const u8, version_: u32) callconv(.c) void {
+                    if (handlers.global) |h| {
+                        h(@ptrCast(@alignCast(ptr)), registry_, name_, interface_, version_);
+                    }
+                }
+                fn globalRemove(ptr: ?*anyopaque, registry_: *Registry, name_: u32) callconv(.c) void {
+                    if (handlers.globalRemove) |h| {
+                        h(@ptrCast(@alignCast(ptr)), registry_, name_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
         }
 
         pub const interface: common.Interface = .{
@@ -151,9 +226,40 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Callback = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
-        const interface: common.Interface = .{
+        const Listener = extern struct {
+            done: ?*const fn (data: ?*anyopaque, callback: *Callback, callback_data: u32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                done: ?*const fn (data: *T, callback: *Callback, callback_data: u32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .done = if (handlers.done != null) done else null,
+                };
+
+                fn done(ptr: ?*anyopaque, callback_: *Callback, callback_data_: u32) callconv(.c) void {
+                    if (handlers.done) |h| {
+                        h(@ptrCast(@alignCast(ptr)), callback_, callback_data_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const interface: common.Interface = .{
             .name = "wl_callback",
             .version = 1,
             .method_count = 0,
@@ -172,6 +278,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Compositor = opaque {
+        const Self = @This();
+
         const version: u32 = 7;
 
         pub fn createSurface(compositor: *Compositor) !*Surface {
@@ -183,9 +291,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -198,9 +305,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -215,7 +321,7 @@ pub const Wl = struct {
             );
         }
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_compositor",
             .version = 7,
             .method_count = 3,
@@ -246,6 +352,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const ShmPool = opaque {
+        const Self = @This();
+
         const version: u32 = 2;
 
         pub fn createBuffer(shm_pool: *ShmPool, offset: i32, width: i32, height: i32, stride: i32, format: Shm.Format) !*Buffer {
@@ -262,9 +370,8 @@ pub const Wl = struct {
                 height,
                 stride,
                 @intFromEnum(format),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -291,7 +398,7 @@ pub const Wl = struct {
             );
         }
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_shm_pool",
             .version = 2,
             .method_count = 3,
@@ -327,6 +434,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Shm = opaque {
+        const Self = @This();
+
         const version: u32 = 2;
 
         pub fn createPool(shm: *Shm, fd: std.os.linux.fd_t, size: i32) !*ShmPool {
@@ -340,9 +449,8 @@ pub const Wl = struct {
                 @as(?*anyopaque, null),
                 fd,
                 size,
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -355,6 +463,35 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
             );
+        }
+
+        const Listener = extern struct {
+            format: ?*const fn (data: ?*anyopaque, shm: *Shm, format: Format) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                format: ?*const fn (data: *T, shm: *Shm, format: Format) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .format = if (handlers.format != null) format else null,
+                };
+
+                fn format(ptr: ?*anyopaque, shm_: *Shm, format_: Format) callconv(.c) void {
+                    if (handlers.format) |h| {
+                        h(@ptrCast(@alignCast(ptr)), shm_, format_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
         }
 
         pub const Error = enum(u32) {
@@ -509,7 +646,7 @@ pub const Wl = struct {
             s416 = 909194323,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_shm",
             .version = 2,
             .method_count = 2,
@@ -543,6 +680,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Buffer = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn destroy(buffer: *Buffer) !void {
@@ -556,7 +695,36 @@ pub const Wl = struct {
             );
         }
 
-        const interface: common.Interface = .{
+        const Listener = extern struct {
+            release: ?*const fn (data: ?*anyopaque, buffer: *Buffer) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                release: ?*const fn (data: *T, buffer: *Buffer) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .release = if (handlers.release != null) release else null,
+                };
+
+                fn release(ptr: ?*anyopaque, buffer_: *Buffer) callconv(.c) void {
+                    if (handlers.release) |h| {
+                        h(@ptrCast(@alignCast(ptr)), buffer_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const interface: common.Interface = .{
             .name = "wl_buffer",
             .version = 1,
             .method_count = 1,
@@ -579,6 +747,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const DataOffer = opaque {
+        const Self = @This();
+
         const version: u32 = 4;
 
         pub fn accept(data_offer: *DataOffer, serial: u32, mime_type: ?[*:0]const u8) !void {
@@ -642,6 +812,51 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            offer: ?*const fn (data: ?*anyopaque, data_offer: *DataOffer, mime_type: [*:0]const u8) callconv(.c) void,
+            sourceActions: ?*const fn (data: ?*anyopaque, data_offer: *DataOffer, source_actions: DataDeviceManager.DndAction) callconv(.c) void,
+            action: ?*const fn (data: ?*anyopaque, data_offer: *DataOffer, dnd_action: DataDeviceManager.DndAction) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                offer: ?*const fn (data: *T, data_offer: *DataOffer, mime_type: [*:0]const u8) void = null,
+                sourceActions: ?*const fn (data: *T, data_offer: *DataOffer, source_actions: DataDeviceManager.DndAction) void = null,
+                action: ?*const fn (data: *T, data_offer: *DataOffer, dnd_action: DataDeviceManager.DndAction) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .offer = if (handlers.offer != null) offer else null,
+                    .sourceActions = if (handlers.sourceActions != null) sourceActions else null,
+                    .action = if (handlers.action != null) action else null,
+                };
+
+                fn offer(ptr: ?*anyopaque, data_offer_: *DataOffer, mime_type_: [*:0]const u8) callconv(.c) void {
+                    if (handlers.offer) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_offer_, mime_type_);
+                    }
+                }
+                fn sourceActions(ptr: ?*anyopaque, data_offer_: *DataOffer, source_actions_: DataDeviceManager.DndAction) callconv(.c) void {
+                    if (handlers.sourceActions) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_offer_, source_actions_);
+                    }
+                }
+                fn action(ptr: ?*anyopaque, data_offer_: *DataOffer, dnd_action_: DataDeviceManager.DndAction) callconv(.c) void {
+                    if (handlers.action) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_offer_, dnd_action_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const Error = enum(u32) {
             invalid_finish = 0,
             invalid_action_mask = 1,
@@ -649,7 +864,7 @@ pub const Wl = struct {
             invalid_offer = 3,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_data_offer",
             .version = 4,
             .method_count = 5,
@@ -717,6 +932,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const DataSource = opaque {
+        const Self = @This();
+
         const version: u32 = 4;
 
         pub fn offer(data_source: *DataSource, mime_type: [*:0]const u8) !void {
@@ -754,12 +971,81 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            target: ?*const fn (data: ?*anyopaque, data_source: *DataSource, mime_type: ?[*:0]const u8) callconv(.c) void,
+            send: ?*const fn (data: ?*anyopaque, data_source: *DataSource, mime_type: [*:0]const u8, fd: std.os.linux.fd_t) callconv(.c) void,
+            cancelled: ?*const fn (data: ?*anyopaque, data_source: *DataSource) callconv(.c) void,
+            dndDropPerformed: ?*const fn (data: ?*anyopaque, data_source: *DataSource) callconv(.c) void,
+            dndFinished: ?*const fn (data: ?*anyopaque, data_source: *DataSource) callconv(.c) void,
+            action: ?*const fn (data: ?*anyopaque, data_source: *DataSource, dnd_action: DataDeviceManager.DndAction) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                target: ?*const fn (data: *T, data_source: *DataSource, mime_type: ?[*:0]const u8) void = null,
+                send: ?*const fn (data: *T, data_source: *DataSource, mime_type: [*:0]const u8, fd: std.os.linux.fd_t) void = null,
+                cancelled: ?*const fn (data: *T, data_source: *DataSource) void = null,
+                dndDropPerformed: ?*const fn (data: *T, data_source: *DataSource) void = null,
+                dndFinished: ?*const fn (data: *T, data_source: *DataSource) void = null,
+                action: ?*const fn (data: *T, data_source: *DataSource, dnd_action: DataDeviceManager.DndAction) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .target = if (handlers.target != null) target else null,
+                    .send = if (handlers.send != null) send else null,
+                    .cancelled = if (handlers.cancelled != null) cancelled else null,
+                    .dndDropPerformed = if (handlers.dndDropPerformed != null) dndDropPerformed else null,
+                    .dndFinished = if (handlers.dndFinished != null) dndFinished else null,
+                    .action = if (handlers.action != null) action else null,
+                };
+
+                fn target(ptr: ?*anyopaque, data_source_: *DataSource, mime_type_: ?[*:0]const u8) callconv(.c) void {
+                    if (handlers.target) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_source_, mime_type_);
+                    }
+                }
+                fn send(ptr: ?*anyopaque, data_source_: *DataSource, mime_type_: [*:0]const u8, fd_: std.os.linux.fd_t) callconv(.c) void {
+                    if (handlers.send) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_source_, mime_type_, fd_);
+                    }
+                }
+                fn cancelled(ptr: ?*anyopaque, data_source_: *DataSource) callconv(.c) void {
+                    if (handlers.cancelled) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_source_);
+                    }
+                }
+                fn dndDropPerformed(ptr: ?*anyopaque, data_source_: *DataSource) callconv(.c) void {
+                    if (handlers.dndDropPerformed) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_source_);
+                    }
+                }
+                fn dndFinished(ptr: ?*anyopaque, data_source_: *DataSource) callconv(.c) void {
+                    if (handlers.dndFinished) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_source_);
+                    }
+                }
+                fn action(ptr: ?*anyopaque, data_source_: *DataSource, dnd_action_: DataDeviceManager.DndAction) callconv(.c) void {
+                    if (handlers.action) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_source_, dnd_action_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const Error = enum(u32) {
             invalid_action_mask = 0,
             invalid_source = 1,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_data_source",
             .version = 4,
             .method_count = 3,
@@ -828,6 +1114,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const DataDevice = opaque {
+        const Self = @This();
+
         const version: u32 = 4;
 
         pub fn startDrag(data_device: *DataDevice, source: ?*const DataSource, origin: *const Surface, icon: ?*const Surface, serial: u32) !void {
@@ -869,12 +1157,81 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            dataOffer: ?*const fn (data: ?*anyopaque, data_device: *DataDevice) callconv(.c) void,
+            enter: ?*const fn (data: ?*anyopaque, data_device: *DataDevice, serial: u32, surface: *const Surface, x: common.Fixed, y: common.Fixed, id: ?*const DataOffer) callconv(.c) void,
+            leave: ?*const fn (data: ?*anyopaque, data_device: *DataDevice) callconv(.c) void,
+            motion: ?*const fn (data: ?*anyopaque, data_device: *DataDevice, time: u32, x: common.Fixed, y: common.Fixed) callconv(.c) void,
+            drop: ?*const fn (data: ?*anyopaque, data_device: *DataDevice) callconv(.c) void,
+            selection: ?*const fn (data: ?*anyopaque, data_device: *DataDevice, id: ?*const DataOffer) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                dataOffer: ?*const fn (data: *T, data_device: *DataDevice) void = null,
+                enter: ?*const fn (data: *T, data_device: *DataDevice, serial: u32, surface: *const Surface, x: common.Fixed, y: common.Fixed, id: ?*const DataOffer) void = null,
+                leave: ?*const fn (data: *T, data_device: *DataDevice) void = null,
+                motion: ?*const fn (data: *T, data_device: *DataDevice, time: u32, x: common.Fixed, y: common.Fixed) void = null,
+                drop: ?*const fn (data: *T, data_device: *DataDevice) void = null,
+                selection: ?*const fn (data: *T, data_device: *DataDevice, id: ?*const DataOffer) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .dataOffer = if (handlers.dataOffer != null) dataOffer else null,
+                    .enter = if (handlers.enter != null) enter else null,
+                    .leave = if (handlers.leave != null) leave else null,
+                    .motion = if (handlers.motion != null) motion else null,
+                    .drop = if (handlers.drop != null) drop else null,
+                    .selection = if (handlers.selection != null) selection else null,
+                };
+
+                fn dataOffer(ptr: ?*anyopaque, data_device_: *DataDevice) callconv(.c) void {
+                    if (handlers.dataOffer) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_device_);
+                    }
+                }
+                fn enter(ptr: ?*anyopaque, data_device_: *DataDevice, serial_: u32, surface_: *const Surface, x_: common.Fixed, y_: common.Fixed, id_: ?*const DataOffer) callconv(.c) void {
+                    if (handlers.enter) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_device_, serial_, surface_, x_, y_, id_);
+                    }
+                }
+                fn leave(ptr: ?*anyopaque, data_device_: *DataDevice) callconv(.c) void {
+                    if (handlers.leave) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_device_);
+                    }
+                }
+                fn motion(ptr: ?*anyopaque, data_device_: *DataDevice, time_: u32, x_: common.Fixed, y_: common.Fixed) callconv(.c) void {
+                    if (handlers.motion) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_device_, time_, x_, y_);
+                    }
+                }
+                fn drop(ptr: ?*anyopaque, data_device_: *DataDevice) callconv(.c) void {
+                    if (handlers.drop) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_device_);
+                    }
+                }
+                fn selection(ptr: ?*anyopaque, data_device_: *DataDevice, id_: ?*const DataOffer) callconv(.c) void {
+                    if (handlers.selection) |h| {
+                        h(@ptrCast(@alignCast(ptr)), data_device_, id_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const Error = enum(u32) {
             role = 0,
             used_source = 1,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_data_device",
             .version = 4,
             .method_count = 3,
@@ -954,6 +1311,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const DataDeviceManager = opaque {
+        const Self = @This();
+
         const version: u32 = 4;
 
         pub fn createDataSource(data_device_manager: *DataDeviceManager) !*DataSource {
@@ -965,9 +1324,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -981,9 +1339,8 @@ pub const Wl = struct {
                 0,
                 @as(?*anyopaque, null),
                 seat,
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -1003,9 +1360,17 @@ pub const Wl = struct {
             copy = 1,
             move = 2,
             ask = 4,
+
+            pub fn contains(self: DndAction, other: DndAction) bool {
+                return @intFromEnum(self) & @intFromEnum(other) != 0;
+            }
+
+            pub fn merge(self: DndAction, other: DndAction) DndAction {
+                return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+            }
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_data_device_manager",
             .version = 4,
             .method_count = 3,
@@ -1037,6 +1402,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Shell = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn getShellSurface(shell: *Shell, surface: *const Surface) !*ShellSurface {
@@ -1049,9 +1416,8 @@ pub const Wl = struct {
                 0,
                 @as(?*anyopaque, null),
                 surface,
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -1059,7 +1425,7 @@ pub const Wl = struct {
             role = 0,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_shell",
             .version = 1,
             .method_count = 1,
@@ -1079,6 +1445,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const ShellSurface = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn pong(shell_surface: *ShellSurface, serial: u32) !void {
@@ -1213,6 +1581,51 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            ping: ?*const fn (data: ?*anyopaque, shell_surface: *ShellSurface, serial: u32) callconv(.c) void,
+            configure: ?*const fn (data: ?*anyopaque, shell_surface: *ShellSurface, edges: Resize, width: i32, height: i32) callconv(.c) void,
+            popupDone: ?*const fn (data: ?*anyopaque, shell_surface: *ShellSurface) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                ping: ?*const fn (data: *T, shell_surface: *ShellSurface, serial: u32) void = null,
+                configure: ?*const fn (data: *T, shell_surface: *ShellSurface, edges: Resize, width: i32, height: i32) void = null,
+                popupDone: ?*const fn (data: *T, shell_surface: *ShellSurface) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .ping = if (handlers.ping != null) ping else null,
+                    .configure = if (handlers.configure != null) configure else null,
+                    .popupDone = if (handlers.popupDone != null) popupDone else null,
+                };
+
+                fn ping(ptr: ?*anyopaque, shell_surface_: *ShellSurface, serial_: u32) callconv(.c) void {
+                    if (handlers.ping) |h| {
+                        h(@ptrCast(@alignCast(ptr)), shell_surface_, serial_);
+                    }
+                }
+                fn configure(ptr: ?*anyopaque, shell_surface_: *ShellSurface, edges_: Resize, width_: i32, height_: i32) callconv(.c) void {
+                    if (handlers.configure) |h| {
+                        h(@ptrCast(@alignCast(ptr)), shell_surface_, edges_, width_, height_);
+                    }
+                }
+                fn popupDone(ptr: ?*anyopaque, shell_surface_: *ShellSurface) callconv(.c) void {
+                    if (handlers.popupDone) |h| {
+                        h(@ptrCast(@alignCast(ptr)), shell_surface_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const Resize = enum(u32) {
             none = 0,
             top = 1,
@@ -1223,10 +1636,26 @@ pub const Wl = struct {
             right = 8,
             top_right = 9,
             bottom_right = 10,
+
+            pub fn contains(self: Resize, other: Resize) bool {
+                return @intFromEnum(self) & @intFromEnum(other) != 0;
+            }
+
+            pub fn merge(self: Resize, other: Resize) Resize {
+                return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+            }
         };
 
         pub const Transient = enum(u32) {
             inactive = 1,
+
+            pub fn contains(self: Transient, other: Transient) bool {
+                return @intFromEnum(self) & @intFromEnum(other) != 0;
+            }
+
+            pub fn merge(self: Transient, other: Transient) Transient {
+                return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+            }
         };
 
         pub const FullscreenMethod = enum(u32) {
@@ -1236,7 +1665,7 @@ pub const Wl = struct {
             fill = 3,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_shell_surface",
             .version = 1,
             .method_count = 10,
@@ -1351,6 +1780,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Surface = opaque {
+        const Self = @This();
+
         const version: u32 = 7;
 
         pub fn destroy(surface: *Surface) !void {
@@ -1402,9 +1833,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -1504,10 +1934,62 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
+        }
+
+        const Listener = extern struct {
+            enter: ?*const fn (data: ?*anyopaque, surface: *Surface, output: *const Output) callconv(.c) void,
+            leave: ?*const fn (data: ?*anyopaque, surface: *Surface, output: *const Output) callconv(.c) void,
+            preferredBufferScale: ?*const fn (data: ?*anyopaque, surface: *Surface, factor: i32) callconv(.c) void,
+            preferredBufferTransform: ?*const fn (data: ?*anyopaque, surface: *Surface, transform: Output.Transform) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                enter: ?*const fn (data: *T, surface: *Surface, output: *const Output) void = null,
+                leave: ?*const fn (data: *T, surface: *Surface, output: *const Output) void = null,
+                preferredBufferScale: ?*const fn (data: *T, surface: *Surface, factor: i32) void = null,
+                preferredBufferTransform: ?*const fn (data: *T, surface: *Surface, transform: Output.Transform) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .enter = if (handlers.enter != null) enter else null,
+                    .leave = if (handlers.leave != null) leave else null,
+                    .preferredBufferScale = if (handlers.preferredBufferScale != null) preferredBufferScale else null,
+                    .preferredBufferTransform = if (handlers.preferredBufferTransform != null) preferredBufferTransform else null,
+                };
+
+                fn enter(ptr: ?*anyopaque, surface_: *Surface, output_: *const Output) callconv(.c) void {
+                    if (handlers.enter) |h| {
+                        h(@ptrCast(@alignCast(ptr)), surface_, output_);
+                    }
+                }
+                fn leave(ptr: ?*anyopaque, surface_: *Surface, output_: *const Output) callconv(.c) void {
+                    if (handlers.leave) |h| {
+                        h(@ptrCast(@alignCast(ptr)), surface_, output_);
+                    }
+                }
+                fn preferredBufferScale(ptr: ?*anyopaque, surface_: *Surface, factor_: i32) callconv(.c) void {
+                    if (handlers.preferredBufferScale) |h| {
+                        h(@ptrCast(@alignCast(ptr)), surface_, factor_);
+                    }
+                }
+                fn preferredBufferTransform(ptr: ?*anyopaque, surface_: *Surface, transform_: Output.Transform) callconv(.c) void {
+                    if (handlers.preferredBufferTransform) |h| {
+                        h(@ptrCast(@alignCast(ptr)), surface_, transform_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
         }
 
         pub const Error = enum(u32) {
@@ -1519,7 +2001,7 @@ pub const Wl = struct {
             no_buffer = 5,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_surface",
             .version = 7,
             .method_count = 12,
@@ -1649,6 +2131,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Seat = opaque {
+        const Self = @This();
+
         const version: u32 = 10;
 
         pub fn getPointer(seat: *Seat) !*Pointer {
@@ -1660,9 +2144,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -1675,9 +2158,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -1690,9 +2172,8 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
                 @as(?*anyopaque, null),
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -1707,17 +2188,62 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            capabilities: ?*const fn (data: ?*anyopaque, seat: *Seat, capabilities: Capability) callconv(.c) void,
+            name: ?*const fn (data: ?*anyopaque, seat: *Seat, name: [*:0]const u8) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                capabilities: ?*const fn (data: *T, seat: *Seat, capabilities: Capability) void = null,
+                name: ?*const fn (data: *T, seat: *Seat, name: [*:0]const u8) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .capabilities = if (handlers.capabilities != null) capabilities else null,
+                    .name = if (handlers.name != null) name else null,
+                };
+
+                fn capabilities(ptr: ?*anyopaque, seat_: *Seat, capabilities_: Capability) callconv(.c) void {
+                    if (handlers.capabilities) |h| {
+                        h(@ptrCast(@alignCast(ptr)), seat_, capabilities_);
+                    }
+                }
+                fn name(ptr: ?*anyopaque, seat_: *Seat, name_: [*:0]const u8) callconv(.c) void {
+                    if (handlers.name) |h| {
+                        h(@ptrCast(@alignCast(ptr)), seat_, name_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const Capability = enum(u32) {
             pointer = 1,
             keyboard = 2,
             touch = 4,
+
+            pub fn contains(self: Capability, other: Capability) bool {
+                return @intFromEnum(self) & @intFromEnum(other) != 0;
+            }
+
+            pub fn merge(self: Capability, other: Capability) Capability {
+                return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+            }
         };
 
         pub const Error = enum(u32) {
             missing_capability = 0,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_seat",
             .version = 10,
             .method_count = 4,
@@ -1770,6 +2296,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Pointer = opaque {
+        const Self = @This();
+
         const version: u32 = 10;
 
         pub fn setCursor(pointer: *Pointer, serial: u32, surface: ?*const Surface, hotspot_x: i32, hotspot_y: i32) !void {
@@ -1798,6 +2326,115 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            enter: ?*const fn (data: ?*anyopaque, pointer: *Pointer, serial: u32, surface: *const Surface, surface_x: common.Fixed, surface_y: common.Fixed) callconv(.c) void,
+            leave: ?*const fn (data: ?*anyopaque, pointer: *Pointer, serial: u32, surface: *const Surface) callconv(.c) void,
+            motion: ?*const fn (data: ?*anyopaque, pointer: *Pointer, time: u32, surface_x: common.Fixed, surface_y: common.Fixed) callconv(.c) void,
+            button: ?*const fn (data: ?*anyopaque, pointer: *Pointer, serial: u32, time: u32, button: u32, state: ButtonState) callconv(.c) void,
+            axis: ?*const fn (data: ?*anyopaque, pointer: *Pointer, time: u32, axis: Axis, value: common.Fixed) callconv(.c) void,
+            frame: ?*const fn (data: ?*anyopaque, pointer: *Pointer) callconv(.c) void,
+            axisSource: ?*const fn (data: ?*anyopaque, pointer: *Pointer, axis_source: AxisSource) callconv(.c) void,
+            axisStop: ?*const fn (data: ?*anyopaque, pointer: *Pointer, time: u32, axis: Axis) callconv(.c) void,
+            axisDiscrete: ?*const fn (data: ?*anyopaque, pointer: *Pointer, axis: Axis, discrete: i32) callconv(.c) void,
+            axisValue120: ?*const fn (data: ?*anyopaque, pointer: *Pointer, axis: Axis, value120: i32) callconv(.c) void,
+            axisRelativeDirection: ?*const fn (data: ?*anyopaque, pointer: *Pointer, axis: Axis, direction: AxisRelativeDirection) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                enter: ?*const fn (data: *T, pointer: *Pointer, serial: u32, surface: *const Surface, surface_x: common.Fixed, surface_y: common.Fixed) void = null,
+                leave: ?*const fn (data: *T, pointer: *Pointer, serial: u32, surface: *const Surface) void = null,
+                motion: ?*const fn (data: *T, pointer: *Pointer, time: u32, surface_x: common.Fixed, surface_y: common.Fixed) void = null,
+                button: ?*const fn (data: *T, pointer: *Pointer, serial: u32, time: u32, button: u32, state: ButtonState) void = null,
+                axis: ?*const fn (data: *T, pointer: *Pointer, time: u32, axis: Axis, value: common.Fixed) void = null,
+                frame: ?*const fn (data: *T, pointer: *Pointer) void = null,
+                axisSource: ?*const fn (data: *T, pointer: *Pointer, axis_source: AxisSource) void = null,
+                axisStop: ?*const fn (data: *T, pointer: *Pointer, time: u32, axis: Axis) void = null,
+                axisDiscrete: ?*const fn (data: *T, pointer: *Pointer, axis: Axis, discrete: i32) void = null,
+                axisValue120: ?*const fn (data: *T, pointer: *Pointer, axis: Axis, value120: i32) void = null,
+                axisRelativeDirection: ?*const fn (data: *T, pointer: *Pointer, axis: Axis, direction: AxisRelativeDirection) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .enter = if (handlers.enter != null) enter else null,
+                    .leave = if (handlers.leave != null) leave else null,
+                    .motion = if (handlers.motion != null) motion else null,
+                    .button = if (handlers.button != null) button else null,
+                    .axis = if (handlers.axis != null) axis else null,
+                    .frame = if (handlers.frame != null) frame else null,
+                    .axisSource = if (handlers.axisSource != null) axisSource else null,
+                    .axisStop = if (handlers.axisStop != null) axisStop else null,
+                    .axisDiscrete = if (handlers.axisDiscrete != null) axisDiscrete else null,
+                    .axisValue120 = if (handlers.axisValue120 != null) axisValue120 else null,
+                    .axisRelativeDirection = if (handlers.axisRelativeDirection != null) axisRelativeDirection else null,
+                };
+
+                fn enter(ptr: ?*anyopaque, pointer_: *Pointer, serial_: u32, surface_: *const Surface, surface_x_: common.Fixed, surface_y_: common.Fixed) callconv(.c) void {
+                    if (handlers.enter) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, serial_, surface_, surface_x_, surface_y_);
+                    }
+                }
+                fn leave(ptr: ?*anyopaque, pointer_: *Pointer, serial_: u32, surface_: *const Surface) callconv(.c) void {
+                    if (handlers.leave) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, serial_, surface_);
+                    }
+                }
+                fn motion(ptr: ?*anyopaque, pointer_: *Pointer, time_: u32, surface_x_: common.Fixed, surface_y_: common.Fixed) callconv(.c) void {
+                    if (handlers.motion) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, time_, surface_x_, surface_y_);
+                    }
+                }
+                fn button(ptr: ?*anyopaque, pointer_: *Pointer, serial_: u32, time_: u32, button_: u32, state_: ButtonState) callconv(.c) void {
+                    if (handlers.button) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, serial_, time_, button_, state_);
+                    }
+                }
+                fn axis(ptr: ?*anyopaque, pointer_: *Pointer, time_: u32, axis_: Axis, value_: common.Fixed) callconv(.c) void {
+                    if (handlers.axis) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, time_, axis_, value_);
+                    }
+                }
+                fn frame(ptr: ?*anyopaque, pointer_: *Pointer) callconv(.c) void {
+                    if (handlers.frame) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_);
+                    }
+                }
+                fn axisSource(ptr: ?*anyopaque, pointer_: *Pointer, axis_source_: AxisSource) callconv(.c) void {
+                    if (handlers.axisSource) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, axis_source_);
+                    }
+                }
+                fn axisStop(ptr: ?*anyopaque, pointer_: *Pointer, time_: u32, axis_: Axis) callconv(.c) void {
+                    if (handlers.axisStop) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, time_, axis_);
+                    }
+                }
+                fn axisDiscrete(ptr: ?*anyopaque, pointer_: *Pointer, axis_: Axis, discrete_: i32) callconv(.c) void {
+                    if (handlers.axisDiscrete) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, axis_, discrete_);
+                    }
+                }
+                fn axisValue120(ptr: ?*anyopaque, pointer_: *Pointer, axis_: Axis, value120_: i32) callconv(.c) void {
+                    if (handlers.axisValue120) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, axis_, value120_);
+                    }
+                }
+                fn axisRelativeDirection(ptr: ?*anyopaque, pointer_: *Pointer, axis_: Axis, direction_: AxisRelativeDirection) callconv(.c) void {
+                    if (handlers.axisRelativeDirection) |h| {
+                        h(@ptrCast(@alignCast(ptr)), pointer_, axis_, direction_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const Error = enum(u32) {
             role = 0,
         };
@@ -1824,7 +2461,7 @@ pub const Wl = struct {
             inverted = 1,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_pointer",
             .version = 10,
             .method_count = 2,
@@ -1942,6 +2579,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Keyboard = opaque {
+        const Self = @This();
+
         const version: u32 = 10;
 
         pub fn release(keyboard: *Keyboard) !void {
@@ -1955,6 +2594,75 @@ pub const Wl = struct {
             );
         }
 
+        const Listener = extern struct {
+            keymap: ?*const fn (data: ?*anyopaque, keyboard: *Keyboard, format: KeymapFormat, fd: std.os.linux.fd_t, size: u32) callconv(.c) void,
+            enter: ?*const fn (data: ?*anyopaque, keyboard: *Keyboard, serial: u32, surface: *const Surface, keys: *common.Array) callconv(.c) void,
+            leave: ?*const fn (data: ?*anyopaque, keyboard: *Keyboard, serial: u32, surface: *const Surface) callconv(.c) void,
+            key: ?*const fn (data: ?*anyopaque, keyboard: *Keyboard, serial: u32, time: u32, key: u32, state: KeyState) callconv(.c) void,
+            modifiers: ?*const fn (data: ?*anyopaque, keyboard: *Keyboard, serial: u32, mods_depressed: u32, mods_latched: u32, mods_locked: u32, group: u32) callconv(.c) void,
+            repeatInfo: ?*const fn (data: ?*anyopaque, keyboard: *Keyboard, rate: i32, delay: i32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                keymap: ?*const fn (data: *T, keyboard: *Keyboard, format: KeymapFormat, fd: std.os.linux.fd_t, size: u32) void = null,
+                enter: ?*const fn (data: *T, keyboard: *Keyboard, serial: u32, surface: *const Surface, keys: *common.Array) void = null,
+                leave: ?*const fn (data: *T, keyboard: *Keyboard, serial: u32, surface: *const Surface) void = null,
+                key: ?*const fn (data: *T, keyboard: *Keyboard, serial: u32, time: u32, key: u32, state: KeyState) void = null,
+                modifiers: ?*const fn (data: *T, keyboard: *Keyboard, serial: u32, mods_depressed: u32, mods_latched: u32, mods_locked: u32, group: u32) void = null,
+                repeatInfo: ?*const fn (data: *T, keyboard: *Keyboard, rate: i32, delay: i32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .keymap = if (handlers.keymap != null) keymap else null,
+                    .enter = if (handlers.enter != null) enter else null,
+                    .leave = if (handlers.leave != null) leave else null,
+                    .key = if (handlers.key != null) key else null,
+                    .modifiers = if (handlers.modifiers != null) modifiers else null,
+                    .repeatInfo = if (handlers.repeatInfo != null) repeatInfo else null,
+                };
+
+                fn keymap(ptr: ?*anyopaque, keyboard_: *Keyboard, format_: KeymapFormat, fd_: std.os.linux.fd_t, size_: u32) callconv(.c) void {
+                    if (handlers.keymap) |h| {
+                        h(@ptrCast(@alignCast(ptr)), keyboard_, format_, fd_, size_);
+                    }
+                }
+                fn enter(ptr: ?*anyopaque, keyboard_: *Keyboard, serial_: u32, surface_: *const Surface, keys_: *common.Array) callconv(.c) void {
+                    if (handlers.enter) |h| {
+                        h(@ptrCast(@alignCast(ptr)), keyboard_, serial_, surface_, keys_);
+                    }
+                }
+                fn leave(ptr: ?*anyopaque, keyboard_: *Keyboard, serial_: u32, surface_: *const Surface) callconv(.c) void {
+                    if (handlers.leave) |h| {
+                        h(@ptrCast(@alignCast(ptr)), keyboard_, serial_, surface_);
+                    }
+                }
+                fn key(ptr: ?*anyopaque, keyboard_: *Keyboard, serial_: u32, time_: u32, key_: u32, state_: KeyState) callconv(.c) void {
+                    if (handlers.key) |h| {
+                        h(@ptrCast(@alignCast(ptr)), keyboard_, serial_, time_, key_, state_);
+                    }
+                }
+                fn modifiers(ptr: ?*anyopaque, keyboard_: *Keyboard, serial_: u32, mods_depressed_: u32, mods_latched_: u32, mods_locked_: u32, group_: u32) callconv(.c) void {
+                    if (handlers.modifiers) |h| {
+                        h(@ptrCast(@alignCast(ptr)), keyboard_, serial_, mods_depressed_, mods_latched_, mods_locked_, group_);
+                    }
+                }
+                fn repeatInfo(ptr: ?*anyopaque, keyboard_: *Keyboard, rate_: i32, delay_: i32) callconv(.c) void {
+                    if (handlers.repeatInfo) |h| {
+                        h(@ptrCast(@alignCast(ptr)), keyboard_, rate_, delay_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
         pub const KeymapFormat = enum(u32) {
             no_keymap = 0,
             xkb_v1 = 1,
@@ -1966,7 +2674,7 @@ pub const Wl = struct {
             repeated = 2,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_keyboard",
             .version = 10,
             .method_count = 1,
@@ -2039,6 +2747,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Touch = opaque {
+        const Self = @This();
+
         const version: u32 = 10;
 
         pub fn release(touch: *Touch) !void {
@@ -2052,7 +2762,84 @@ pub const Wl = struct {
             );
         }
 
-        const interface: common.Interface = .{
+        const Listener = extern struct {
+            down: ?*const fn (data: ?*anyopaque, touch: *Touch, serial: u32, time: u32, surface: *const Surface, id: i32, x: common.Fixed, y: common.Fixed) callconv(.c) void,
+            up: ?*const fn (data: ?*anyopaque, touch: *Touch, serial: u32, time: u32, id: i32) callconv(.c) void,
+            motion: ?*const fn (data: ?*anyopaque, touch: *Touch, time: u32, id: i32, x: common.Fixed, y: common.Fixed) callconv(.c) void,
+            frame: ?*const fn (data: ?*anyopaque, touch: *Touch) callconv(.c) void,
+            cancel: ?*const fn (data: ?*anyopaque, touch: *Touch) callconv(.c) void,
+            shape: ?*const fn (data: ?*anyopaque, touch: *Touch, id: i32, major: common.Fixed, minor: common.Fixed) callconv(.c) void,
+            orientation: ?*const fn (data: ?*anyopaque, touch: *Touch, id: i32, orientation: common.Fixed) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                down: ?*const fn (data: *T, touch: *Touch, serial: u32, time: u32, surface: *const Surface, id: i32, x: common.Fixed, y: common.Fixed) void = null,
+                up: ?*const fn (data: *T, touch: *Touch, serial: u32, time: u32, id: i32) void = null,
+                motion: ?*const fn (data: *T, touch: *Touch, time: u32, id: i32, x: common.Fixed, y: common.Fixed) void = null,
+                frame: ?*const fn (data: *T, touch: *Touch) void = null,
+                cancel: ?*const fn (data: *T, touch: *Touch) void = null,
+                shape: ?*const fn (data: *T, touch: *Touch, id: i32, major: common.Fixed, minor: common.Fixed) void = null,
+                orientation: ?*const fn (data: *T, touch: *Touch, id: i32, orientation: common.Fixed) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .down = if (handlers.down != null) down else null,
+                    .up = if (handlers.up != null) up else null,
+                    .motion = if (handlers.motion != null) motion else null,
+                    .frame = if (handlers.frame != null) frame else null,
+                    .cancel = if (handlers.cancel != null) cancel else null,
+                    .shape = if (handlers.shape != null) shape else null,
+                    .orientation = if (handlers.orientation != null) orientation else null,
+                };
+
+                fn down(ptr: ?*anyopaque, touch_: *Touch, serial_: u32, time_: u32, surface_: *const Surface, id_: i32, x_: common.Fixed, y_: common.Fixed) callconv(.c) void {
+                    if (handlers.down) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_, serial_, time_, surface_, id_, x_, y_);
+                    }
+                }
+                fn up(ptr: ?*anyopaque, touch_: *Touch, serial_: u32, time_: u32, id_: i32) callconv(.c) void {
+                    if (handlers.up) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_, serial_, time_, id_);
+                    }
+                }
+                fn motion(ptr: ?*anyopaque, touch_: *Touch, time_: u32, id_: i32, x_: common.Fixed, y_: common.Fixed) callconv(.c) void {
+                    if (handlers.motion) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_, time_, id_, x_, y_);
+                    }
+                }
+                fn frame(ptr: ?*anyopaque, touch_: *Touch) callconv(.c) void {
+                    if (handlers.frame) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_);
+                    }
+                }
+                fn cancel(ptr: ?*anyopaque, touch_: *Touch) callconv(.c) void {
+                    if (handlers.cancel) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_);
+                    }
+                }
+                fn shape(ptr: ?*anyopaque, touch_: *Touch, id_: i32, major_: common.Fixed, minor_: common.Fixed) callconv(.c) void {
+                    if (handlers.shape) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_, id_, major_, minor_);
+                    }
+                }
+                fn orientation(ptr: ?*anyopaque, touch_: *Touch, id_: i32, orientation_: common.Fixed) callconv(.c) void {
+                    if (handlers.orientation) |h| {
+                        h(@ptrCast(@alignCast(ptr)), touch_, id_, orientation_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const interface: common.Interface = .{
             .name = "wl_touch",
             .version = 10,
             .method_count = 1,
@@ -2128,6 +2915,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Output = opaque {
+        const Self = @This();
+
         const version: u32 = 4;
 
         pub fn release(output: *Output) !void {
@@ -2139,6 +2928,75 @@ pub const Wl = struct {
                 inner.wl_proxy.wl_proxy_get_version(proxy),
                 0,
             );
+        }
+
+        const Listener = extern struct {
+            geometry: ?*const fn (data: ?*anyopaque, output: *Output, x: i32, y: i32, physical_width: i32, physical_height: i32, subpixel: Subpixel, make: [*:0]const u8, model: [*:0]const u8, transform: Transform) callconv(.c) void,
+            mode: ?*const fn (data: ?*anyopaque, output: *Output, flags: Mode, width: i32, height: i32, refresh: i32) callconv(.c) void,
+            done: ?*const fn (data: ?*anyopaque, output: *Output) callconv(.c) void,
+            scale: ?*const fn (data: ?*anyopaque, output: *Output, factor: i32) callconv(.c) void,
+            name: ?*const fn (data: ?*anyopaque, output: *Output, name: [*:0]const u8) callconv(.c) void,
+            description: ?*const fn (data: ?*anyopaque, output: *Output, description: [*:0]const u8) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                geometry: ?*const fn (data: *T, output: *Output, x: i32, y: i32, physical_width: i32, physical_height: i32, subpixel: Subpixel, make: [*:0]const u8, model: [*:0]const u8, transform: Transform) void = null,
+                mode: ?*const fn (data: *T, output: *Output, flags: Mode, width: i32, height: i32, refresh: i32) void = null,
+                done: ?*const fn (data: *T, output: *Output) void = null,
+                scale: ?*const fn (data: *T, output: *Output, factor: i32) void = null,
+                name: ?*const fn (data: *T, output: *Output, name: [*:0]const u8) void = null,
+                description: ?*const fn (data: *T, output: *Output, description: [*:0]const u8) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .geometry = if (handlers.geometry != null) geometry else null,
+                    .mode = if (handlers.mode != null) mode else null,
+                    .done = if (handlers.done != null) done else null,
+                    .scale = if (handlers.scale != null) scale else null,
+                    .name = if (handlers.name != null) name else null,
+                    .description = if (handlers.description != null) description else null,
+                };
+
+                fn geometry(ptr: ?*anyopaque, output_: *Output, x_: i32, y_: i32, physical_width_: i32, physical_height_: i32, subpixel_: Subpixel, make_: [*:0]const u8, model_: [*:0]const u8, transform_: Transform) callconv(.c) void {
+                    if (handlers.geometry) |h| {
+                        h(@ptrCast(@alignCast(ptr)), output_, x_, y_, physical_width_, physical_height_, subpixel_, make_, model_, transform_);
+                    }
+                }
+                fn mode(ptr: ?*anyopaque, output_: *Output, flags_: Mode, width_: i32, height_: i32, refresh_: i32) callconv(.c) void {
+                    if (handlers.mode) |h| {
+                        h(@ptrCast(@alignCast(ptr)), output_, flags_, width_, height_, refresh_);
+                    }
+                }
+                fn done(ptr: ?*anyopaque, output_: *Output) callconv(.c) void {
+                    if (handlers.done) |h| {
+                        h(@ptrCast(@alignCast(ptr)), output_);
+                    }
+                }
+                fn scale(ptr: ?*anyopaque, output_: *Output, factor_: i32) callconv(.c) void {
+                    if (handlers.scale) |h| {
+                        h(@ptrCast(@alignCast(ptr)), output_, factor_);
+                    }
+                }
+                fn name(ptr: ?*anyopaque, output_: *Output, name_: [*:0]const u8) callconv(.c) void {
+                    if (handlers.name) |h| {
+                        h(@ptrCast(@alignCast(ptr)), output_, name_);
+                    }
+                }
+                fn description(ptr: ?*anyopaque, output_: *Output, description_: [*:0]const u8) callconv(.c) void {
+                    if (handlers.description) |h| {
+                        h(@ptrCast(@alignCast(ptr)), output_, description_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
         }
 
         pub const Subpixel = enum(u32) {
@@ -2164,9 +3022,17 @@ pub const Wl = struct {
         pub const Mode = enum(u32) {
             current = 1,
             preferred = 2,
+
+            pub fn contains(self: Mode, other: Mode) bool {
+                return @intFromEnum(self) & @intFromEnum(other) != 0;
+            }
+
+            pub fn merge(self: Mode, other: Mode) Mode {
+                return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+            }
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_output",
             .version = 4,
             .method_count = 1,
@@ -2234,6 +3100,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Region = opaque {
+        const Self = @This();
+
         const version: u32 = 7;
 
         pub fn destroy(region: *Region) !void {
@@ -2277,7 +3145,7 @@ pub const Wl = struct {
             );
         }
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_region",
             .version = 7,
             .method_count = 3,
@@ -2314,6 +3182,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Subcompositor = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn destroy(subcompositor: *Subcompositor) !void {
@@ -2338,9 +3208,8 @@ pub const Wl = struct {
                 @as(?*anyopaque, null),
                 surface,
                 parent,
-            );
+            ) orelse return error.MarshalFailed;
 
-            if (id == null) return error.MarshalFailed;
             return @ptrCast(@alignCast(id));
         }
 
@@ -2349,7 +3218,7 @@ pub const Wl = struct {
             bad_parent = 1,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_subcompositor",
             .version = 1,
             .method_count = 2,
@@ -2375,6 +3244,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Subsurface = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn destroy(subsurface: *Subsurface) !void {
@@ -2451,7 +3322,7 @@ pub const Wl = struct {
             bad_surface = 0,
         };
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_subsurface",
             .version = 1,
             .method_count = 6,
@@ -2500,6 +3371,8 @@ pub const Wl = struct {
     }; // Interface
 
     pub const Fixes = opaque {
+        const Self = @This();
+
         const version: u32 = 1;
 
         pub fn destroy(fixes: *Fixes) !void {
@@ -2525,7 +3398,7 @@ pub const Wl = struct {
             );
         }
 
-        const interface: common.Interface = .{
+        pub const interface: common.Interface = .{
             .name = "wl_fixes",
             .version = 1,
             .method_count = 2,

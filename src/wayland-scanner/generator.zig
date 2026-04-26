@@ -32,6 +32,8 @@ pub fn generate(allocator: mem.Allocator, protocol: Protocol, writer: *std.Io.Wr
     for (protocol.interfaces.items) |interface| {
         try writer.writeAll(try std.fmt.allocPrint(allocator,
             \\pub const {s} = opaque {{
+            \\    const Self = @This();
+            \\
             \\    const version: u32 = {d};
             \\
             \\
@@ -76,9 +78,8 @@ pub fn generate(allocator: mem.Allocator, protocol: Protocol, writer: *std.Io.Wr
                     \\    inner.wl_proxy.wl_proxy_get_version(proxy),
                     \\    0,
                     \\    {s}
-                    \\);
+                    \\) orelse return error.MarshalFailed;
                     \\
-                    \\if (id == null) return error.MarshalFailed;
                     \\return @ptrCast(@alignCast(id));
                     \\
                 , .{ first_arg_name, i, mem.trimStart(u8, return_type, "*"), try generateMarshallingArgs(allocator, request.args) });
@@ -90,11 +91,13 @@ pub fn generate(allocator: mem.Allocator, protocol: Protocol, writer: *std.Io.Wr
             );
         }
 
+        try generateListener(allocator, writer, interface.name, interface.events);
+
         try generateEnums(allocator, interface.enums, writer);
 
         try writer.print(
             \\
-            \\const interface: common.Interface = .{{
+            \\pub const interface: common.Interface = .{{
             \\    .name = "{s}",
             \\    .version = {d},
             \\    .method_count = {d},
@@ -122,59 +125,6 @@ pub fn generate(allocator: mem.Allocator, protocol: Protocol, writer: *std.Io.Wr
             \\
         );
     }
-
-    // const MessageOffset = struct {
-    //     interface_name: []const u8,
-    //     message_name: []const u8,
-    //     offset: usize,
-    // };
-    // var all_type_entries: std.ArrayList(?[]const u8) = .empty;
-    // var offsets: std.ArrayList(MessageOffset) = .empty;
-
-    // // Offset 0 is always null (empty message placeholder)
-    // try all_type_entries.append(allocator, null);
-    // for (protocol.interfaces.items) |iface| {
-    //     // Combine requests and events into one loop
-    //     const all_messages = [_]std.ArrayList(Message){ iface.requests, iface.events };
-
-    //     for (all_messages) |messages| {
-    //         for (messages.items) |msg| {
-    //             // Record that this specific message starts at current index
-    //             try offsets.append(allocator, .{
-    //                 .interface_name = iface.name,
-    //                 .message_name = msg.name,
-    //                 .offset = all_type_entries.items.len,
-    //             });
-
-    //             // Add an entry for every argument
-    //             for (msg.args.items) |arg| {
-    //                 if (arg.type == .new_id and arg.interface == null) {
-    //                     // Special case: untyped new_id counts as 2 args (s, u)
-    //                     try all_type_entries.append(allocator, null);
-    //                     try all_type_entries.append(allocator, null);
-    //                 } else {
-    //                     try all_type_entries.append(allocator, arg.interface);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-    //
-    //     try writer.writeAll(try std.fmt.allocPrint(allocator,
-    //         \\const protocol_types = [_]?*common.Interface{{
-    //         \\
-    //     , .{}));
-    //     for (all_type_entries.items) |maybe_iface| {
-    //         if (maybe_iface) |iface_name| {
-    //             try writer.print("    &{s}_interface,\n", .{iface_name});
-    //         } else {
-    //             try writer.writeAll("    null,\n");
-    //         }
-    //     }
-    //     try writer.writeAll(
-    //         \\};
-    //         \\
-    //     );
 
     try writer.writeAll(
         \\};
@@ -222,30 +172,46 @@ fn generateInterfaceMessages(arena: mem.Allocator, messages: []Message) ![]const
 
 fn generateDisplayClientApi() []const u8 {
     return
-    \\        /// Connect to a Wayland display.
-    \\        pub inline fn connect(name: ?[*:0]const u8) error{ConnectionFailed}!*Self {
-    \\            return @ptrCast(@alignCast(inner.wl_display.wl_display_connect(name) orelse error.ConnectionFailed));
-    \\        }
+    \\/// Connect to a Wayland display.
+    \\pub inline fn connect(name: ?[*:0]const u8) error{ConnectionFailed}!*Self {
+    \\    return @ptrCast(@alignCast(inner.wl_display.wl_display_connect(name) orelse error.ConnectionFailed));
+    \\}
     \\
-    \\        /// Close a connection to a Wayland display.
-    \\        pub inline fn disconnect(self: *Self) void {
-    \\            inner.wl_display.wl_display_disconnect(@ptrCast(@alignCast(self)));
-    \\        }
+    \\/// Close a connection to a Wayland display.
+    \\pub inline fn disconnect(self: *Self) void {
+    \\    inner.wl_display.wl_display_disconnect(@ptrCast(@alignCast(self)));
+    \\}
     ;
 }
 
 fn generateEnums(arena: mem.Allocator, enums: std.ArrayList(Enum), writer: *std.Io.Writer) !void {
     for (enums.items) |enum_| {
+        const enum_name = try pascalCase(arena, enum_.name);
+
         try writer.writeAll(try std.fmt.allocPrint(arena,
             \\pub const {s} = enum(u32) {{
             \\
-        , .{try pascalCase(arena, enum_.name)}));
+        , .{enum_name}));
 
         for (enum_.entries.items) |entry| {
             try writer.writeAll(try std.fmt.allocPrint(arena,
                 \\    {s} = {d},
                 \\
             , .{ entry.name, entry.value }));
+        }
+
+        if (enum_.bitfield) {
+            try writer.print(
+                \\
+                \\pub fn contains(self: {s}, other: {s}) bool {{
+                \\    return @intFromEnum(self) & @intFromEnum(other) != 0;
+                \\}}
+                \\
+                \\pub fn merge(self: {s}, other: {s}) {s} {{
+                \\    return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+                \\}}
+                \\
+            , .{ enum_name, enum_name, enum_name, enum_name, enum_name });
         }
 
         try writer.writeAll(
@@ -281,6 +247,98 @@ fn generateMarshallingArgs(arena: mem.Allocator, args: std.ArrayList(Arg)) ![]co
 }
 
 // TODO: Generate listeners
+fn generateListener(arena: mem.Allocator, writer: *std.Io.Writer, interface_name: []const u8, events: std.ArrayList(Message)) !void {
+    if (events.items.len == 0) return;
+
+    try writer.writeAll("const Listener = extern struct {\n");
+    for (events.items) |event| {
+        try writer.print(
+            "    {f}: ?*const fn(data: ?*anyopaque, {s}) callconv(.c) void,\n",
+            .{
+                std.zig.fmtId(try camelCase(arena, event.name)),
+                try generateArgs(arena, interface_name, event.args),
+            },
+        );
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll(
+        \\pub fn addListener(
+        \\    self: *Self,
+        \\    comptime T: type,
+        \\    state: *T,
+        \\    comptime handlers: struct {
+        \\
+    );
+    for (events.items) |event| {
+        try writer.print(
+            "        {f}: ?*const fn(data: *T, {s}) void = null,\n",
+            .{
+                std.zig.fmtId(try camelCase(arena, event.name)),
+                mem.trimEnd(u8, try generateArgs(arena, interface_name, event.args), ", "),
+            },
+        );
+    }
+    try writer.writeAll(
+        \\    },
+        \\) !void {
+        \\    const S = struct {
+        \\
+    );
+    try writer.writeAll("const listener = Self.Listener{\n");
+    for (events.items) |event| {
+        const fn_name = std.zig.fmtId(try camelCase(arena, event.name));
+        try writer.print(
+            ".{f} = if (handlers.{f} != null) {f} else null,\n",
+            .{ fn_name, fn_name, fn_name },
+        );
+    }
+    try writer.writeAll("};\n\n");
+
+    for (events.items) |event| {
+        const argsPairs = try generateArgsContext(arena, interface_name, event.args);
+        const fn_name = std.zig.fmtId(try camelCase(arena, event.name));
+
+        try writer.print(
+            \\        fn {f}(ptr: ?*anyopaque, {s}) callconv(.c) void {{
+            \\            if (handlers.{f}) |h| {{
+            \\                h(@ptrCast(@alignCast(ptr)), {s});
+            \\            }}
+            \\        }}
+            \\
+        ,
+            .{
+                fn_name,
+                blk: {
+                    var list: std.ArrayList(u8) = .empty;
+                    for (argsPairs) |pair| {
+                        try list.print(arena, "{s}_: {s}, ", .{ pair.name, pair.type });
+                    }
+                    break :blk mem.trimEnd(u8, try list.toOwnedSlice(arena), ", ");
+                },
+                fn_name,
+                blk: {
+                    var list: std.ArrayList(u8) = .empty;
+                    for (argsPairs) |pair| {
+                        try list.print(arena, "{s}_, ", .{pair.name});
+                    }
+                    break :blk mem.trimEnd(u8, try list.toOwnedSlice(arena), ", ");
+                },
+            },
+        );
+    }
+    try writer.writeAll("};\n");
+
+    try writer.writeAll(
+        \\const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+        \\if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+        \\    return error.AddListenerFailed;
+        \\}
+        \\
+    );
+
+    try writer.writeAll("}\n\n");
+}
 
 fn snakeCase(name: []const u8) []const u8 {
     if (std.mem.startsWith(u8, name, "wl_")) return name[3..];
@@ -331,10 +389,60 @@ fn camelCase(arena: mem.Allocator, name: []const u8) ![]const u8 {
     return list.toOwnedSlice(arena);
 }
 
+const ArgPair = struct { name: []const u8, type: []const u8 };
+
+fn generateArgsContext(arena: mem.Allocator, interface: []const u8, args: std.ArrayList(Arg)) ![]ArgPair {
+    var pairs: std.ArrayList(ArgPair) = .empty;
+
+    try pairs.append(arena, .{
+        .name = snakeCase(interface),
+        .type = try mem.concat(arena, u8, &[_][]const u8{ "*", try pascalCase(arena, interface) }),
+    });
+    outer: for (args.items) |arg| {
+        try pairs.append(arena, .{
+            .name = snakeCase(arg.name),
+            .type = if (arg.enum_) |enum_|
+                try pascalCase(arena, enum_)
+            else switch (arg.type) {
+                .int => "i32",
+                .uint => "u32",
+                .fixed => "common.Fixed",
+                .string => if (arg.nullable) "?[*:0]const u8" else "[*:0]const u8",
+                .object => blk: {
+                    if (arg.interface) |interface_name| {
+                        const iface = try pascalCase(arena, interface_name);
+
+                        break :blk if (arg.nullable)
+                            try mem.concat(arena, u8, &[_][]const u8{ "?*const ", iface })
+                        else
+                            try mem.concat(arena, u8, &[_][]const u8{ "*const ", iface });
+                    } else {
+                        break :blk "?*anyopaque";
+                    }
+                },
+                .array => if (arg.nullable) "?*common.Array" else "*common.Array",
+                .new_id => {
+                    if (arg.interface == null) {
+                        try pairs.append(arena, .{ .name = "T", .type = "type" });
+                    }
+                    continue :outer;
+                },
+                .fd => "std.os.linux.fd_t",
+            },
+        });
+    }
+
+    return pairs.toOwnedSlice(arena);
+}
+
 fn generateArgs(arena: mem.Allocator, interface: []const u8, args: std.ArrayList(Arg)) ![]const u8 {
     var list: std.ArrayList(u8) = .empty;
 
-    try list.print(arena, "{s}: *{s}", .{ snakeCase(interface), try pascalCase(arena, interface) });
+    try list.print(
+        arena,
+        "{s}: *{s}",
+        .{ snakeCase(interface), try pascalCase(arena, interface) },
+    );
     outer: for (args.items) |arg| {
         try list.print(arena, ", {s}: {s}", .{
             arg.name,
@@ -343,17 +451,21 @@ fn generateArgs(arena: mem.Allocator, interface: []const u8, args: std.ArrayList
             else switch (arg.type) {
                 .int => "i32",
                 .uint => "u32",
-                .fixed => "i32",
+                .fixed => "common.Fixed",
                 .string => if (arg.nullable) "?[*:0]const u8" else "[*:0]const u8",
                 .object => blk: {
-                    const iface = try pascalCase(arena, arg.interface orelse return error.ObjectInterfaceNotFound);
+                    if (arg.interface) |interface_name| {
+                        const iface = try pascalCase(arena, interface_name);
 
-                    break :blk if (arg.nullable)
-                        try mem.concat(arena, u8, &[_][]const u8{ "?*const ", iface })
-                    else
-                        try mem.concat(arena, u8, &[_][]const u8{ "*const ", iface });
+                        break :blk if (arg.nullable)
+                            try mem.concat(arena, u8, &[_][]const u8{ "?*const ", iface })
+                        else
+                            try mem.concat(arena, u8, &[_][]const u8{ "*const ", iface });
+                    } else {
+                        break :blk "?*anyopaque";
+                    }
                 },
-                .array => if (arg.nullable) "?*const inner.wl_array" else "*const inner.wl_array",
+                .array => if (arg.nullable) "?*common.Array" else "*common.Array",
                 .new_id => {
                     if (arg.interface == null) {
                         try list.appendSlice(arena, ", comptime T: type");
@@ -540,3 +652,58 @@ test "generate" {
     try generate(allocator, protocol, &file_writer.interface);
     try file_writer.flush();
 }
+
+// IGNORE THIS
+//
+// const MessageOffset = struct {
+//     interface_name: []const u8,
+//     message_name: []const u8,
+//     offset: usize,
+// };
+// var all_type_entries: std.ArrayList(?[]const u8) = .empty;
+// var offsets: std.ArrayList(MessageOffset) = .empty;
+
+// // Offset 0 is always null (empty message placeholder)
+// try all_type_entries.append(allocator, null);
+// for (protocol.interfaces.items) |iface| {
+//     // Combine requests and events into one loop
+//     const all_messages = [_]std.ArrayList(Message){ iface.requests, iface.events };
+
+//     for (all_messages) |messages| {
+//         for (messages.items) |msg| {
+//             // Record that this specific message starts at current index
+//             try offsets.append(allocator, .{
+//                 .interface_name = iface.name,
+//                 .message_name = msg.name,
+//                 .offset = all_type_entries.items.len,
+//             });
+
+//             // Add an entry for every argument
+//             for (msg.args.items) |arg| {
+//                 if (arg.type == .new_id and arg.interface == null) {
+//                     // Special case: untyped new_id counts as 2 args (s, u)
+//                     try all_type_entries.append(allocator, null);
+//                     try all_type_entries.append(allocator, null);
+//                 } else {
+//                     try all_type_entries.append(allocator, arg.interface);
+//                 }
+//             }
+//         }
+//     }
+// }
+//
+//     try writer.writeAll(try std.fmt.allocPrint(allocator,
+//         \\const protocol_types = [_]?*common.Interface{{
+//         \\
+//     , .{}));
+//     for (all_type_entries.items) |maybe_iface| {
+//         if (maybe_iface) |iface_name| {
+//             try writer.print("    &{s}_interface,\n", .{iface_name});
+//         } else {
+//             try writer.writeAll("    null,\n");
+//         }
+//     }
+//     try writer.writeAll(
+//         \\};
+//         \\
+//     );

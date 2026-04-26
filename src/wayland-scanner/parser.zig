@@ -272,13 +272,10 @@ fn parseEnum(arena: mem.Allocator, reader: *xml.Reader) !protocol.Enum {
 }
 
 fn parseEntry(arena: mem.Allocator, reader: *xml.Reader) !protocol.Entry {
-    var name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.AttrNameNotFound));
-    if (std.ascii.isDigit(name[0])) {
-        name = try std.fmt.allocPrint(arena, "@\"{s}\"", .{name});
-    }
+    const name = std.zig.fmtId(try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.AttrNameNotFound)));
 
     const entry: protocol.Entry = .{
-        .name = name,
+        .name = try std.fmt.allocPrint(arena, "{f}", .{name}),
         .value = try std.fmt.parseInt(
             u32,
             try reader.attributeValue(reader.attributeIndex("value") orelse return error.AttrValueNotFound),

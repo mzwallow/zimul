@@ -38,12 +38,12 @@ pub const wl_display = opaque {
 pub const wl_proxy = opaque {
     pub extern fn wl_proxy_create(factory: *wl_proxy, *const Interface) ?*wl_proxy;
     pub extern fn wl_proxy_destroy(proxy: *wl_proxy) void;
-    // wl_proxy_add_listener
+    pub extern fn wl_proxy_add_listener(proxy: *wl_proxy, implementation: [*]?*const fn () callconv(.c) void, data: ?*anyopaque) c_int;
     // wl_proxy_get_listener
     // wl_proxy_add_dispatcher
     // wl_proxy_marshal_array_constructor
     // wl_proxy_marshal_array_constructor_versioned
-    pub extern fn wl_proxy_marshal_flags(proxy: *wl_proxy, opcode: u32, interface: *const Interface, version: u32, flags: u32, ...) *wl_proxy;
+    pub extern fn wl_proxy_marshal_flags(proxy: *wl_proxy, opcode: u32, interface: *const Interface, version: u32, flags: u32, ...) ?*wl_proxy;
     // wl_proxy_marshal_array_flags
     // wl_proxy_marshal
     // wl_proxy_marshal_constructor
