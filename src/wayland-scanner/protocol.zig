@@ -119,7 +119,7 @@ pub const MessageType = enum {
 pub const Arg = struct {
     name: []const u8,
     type: ArgType,
-    enum_: ?[]const u8,
+    @"enum": ?[]const u8,
     interface: ?[]const u8,
     summary: ?[]const u8,
     nullable: bool,
@@ -150,21 +150,23 @@ pub const Entry = struct {
     value: u32,
     since: u16,
     summary: ?[]const u8,
+    description: ?Description,
 
     pub const empty: Self = .{
         .name = undefined,
         .value = undefined,
         .since = 1,
         .summary = null,
+        .description = null,
     };
 };
 
 pub const Description = struct {
-    description: []const u8,
+    description: ?[]const u8,
     summary: ?[]const u8,
 
     pub const empty: Description = .{
-        .description = undefined,
+        .description = null,
         .summary = null,
     };
 };

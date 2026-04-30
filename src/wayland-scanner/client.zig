@@ -6,7 +6,7 @@ const Interface = @import("common.zig").Interface;
 
 pub const wl_event_queue = opaque {
     pub extern fn wl_event_queue_destroy(queue: *wl_event_queue) void;
-    // wl_event_queue_get_name
+    pub extern fn wl_event_queue_get_name(queue: *wl_event_queue) ?[*:0]const u8;
 };
 
 pub const wl_display = opaque {

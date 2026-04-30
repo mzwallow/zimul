@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const linux = @import("linux_wayland");
 
@@ -27,5 +28,9 @@ pub fn run() !void {
         .height = 480,
     };
 
-    try linux.run(&state);
+    switch (builtin.os.tag) {
+        .linux => try linux.run(&state),
+        .windows, .macos => return error.Unimplemented,
+        else => return error.UnsupportedPlatform,
+    }
 }

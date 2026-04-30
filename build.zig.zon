@@ -36,10 +36,6 @@
             .url = "git+https://github.com/ianprime0509/zig-xml#b97f2ab4868ae3cac9902b33a40d3f31d2df739d",
             .hash = "xml-0.2.0-ZTbP3yI6AgB9Rpd2hQrueO63ib0Bm6mQiL_WB1t7JAmP",
         },
-        .wayland = .{
-            .url = "git+https://codeberg.org/mzwallow/zig-wayland#4aa2894534b5b9280537e9a62c2c65d15b50fe34",
-            .hash = "wayland-0.6.0-dev-lQa1kqj-AQClxBuBCtRbdjZU52gVRCwpUFBygVS_ofWW",
-        },
     },
     .paths = .{
         "build.zig",

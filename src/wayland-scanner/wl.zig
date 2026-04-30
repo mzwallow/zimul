@@ -3422,3 +3422,1127 @@ pub const Wl = struct {
     }; // Interface
 
 };
+
+pub const Xdg = struct {
+    pub const WmBase = opaque {
+        const Self = @This();
+
+        const version: u32 = 7;
+
+        pub fn destroy(wm_base: *WmBase) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(wm_base));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                0,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn createPositioner(wm_base: *WmBase) !*Positioner {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(wm_base));
+            const id = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                1,
+                &Positioner.interface,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @as(?*anyopaque, null),
+            ) orelse return error.MarshalFailed;
+
+            return @ptrCast(@alignCast(id));
+        }
+
+        pub fn getXdgSurface(wm_base: *WmBase, surface: *const Wl.Surface) !*Surface {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(wm_base));
+            const id = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                2,
+                &Surface.interface,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @as(?*anyopaque, null),
+                surface,
+            ) orelse return error.MarshalFailed;
+
+            return @ptrCast(@alignCast(id));
+        }
+
+        pub fn pong(wm_base: *WmBase, serial: u32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(wm_base));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                3,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                serial,
+            );
+        }
+
+        const Listener = extern struct {
+            ping: ?*const fn (data: ?*anyopaque, wm_base: *WmBase, serial: u32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                ping: ?*const fn (data: *T, wm_base: *WmBase, serial: u32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .ping = if (handlers.ping != null) ping else null,
+                };
+
+                fn ping(ptr: ?*anyopaque, wm_base_: *WmBase, serial_: u32) callconv(.c) void {
+                    if (handlers.ping) |h| {
+                        h(@ptrCast(@alignCast(ptr)), wm_base_, serial_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const Error = enum(u32) {
+            role = 0,
+            defunct_surfaces = 1,
+            not_the_topmost_popup = 2,
+            invalid_popup_parent = 3,
+            invalid_surface_state = 4,
+            invalid_positioner = 5,
+            unresponsive = 6,
+        };
+
+        pub const interface: common.Interface = .{
+            .name = "xdg_wm_base",
+            .version = 7,
+            .method_count = 4,
+            .methods = &.{
+                .{
+                    .name = "destroy",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "create_positioner",
+                    .signature = "n",
+                    .types = &.{
+                        &Positioner.interface,
+                    },
+                },
+                .{
+                    .name = "get_xdg_surface",
+                    .signature = "no",
+                    .types = &.{
+                        &Surface.interface,
+                        &Wl.Surface.interface,
+                    },
+                },
+                .{
+                    .name = "pong",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+            .event_count = 1,
+            .events = &.{
+                .{
+                    .name = "ping",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+        };
+    }; // Interface
+
+    pub const Positioner = opaque {
+        const Self = @This();
+
+        const version: u32 = 7;
+
+        pub fn destroy(positioner: *Positioner) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                0,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn setSize(positioner: *Positioner, width: i32, height: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                1,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                width,
+                height,
+            );
+        }
+
+        pub fn setAnchorRect(positioner: *Positioner, x: i32, y: i32, width: i32, height: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                2,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                x,
+                y,
+                width,
+                height,
+            );
+        }
+
+        pub fn setAnchor(positioner: *Positioner, anchor: Anchor) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                3,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @intFromEnum(anchor),
+            );
+        }
+
+        pub fn setGravity(positioner: *Positioner, gravity: Gravity) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                4,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @intFromEnum(gravity),
+            );
+        }
+
+        pub fn setConstraintAdjustment(positioner: *Positioner, constraint_adjustment: ConstraintAdjustment) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                5,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @intFromEnum(constraint_adjustment),
+            );
+        }
+
+        pub fn setOffset(positioner: *Positioner, x: i32, y: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                6,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                x,
+                y,
+            );
+        }
+
+        pub fn setReactive(positioner: *Positioner) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                7,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn setParentSize(positioner: *Positioner, parent_width: i32, parent_height: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                8,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                parent_width,
+                parent_height,
+            );
+        }
+
+        pub fn setParentConfigure(positioner: *Positioner, serial: u32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(positioner));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                9,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                serial,
+            );
+        }
+
+        pub const Error = enum(u32) {
+            invalid_input = 0,
+        };
+
+        pub const Anchor = enum(u32) {
+            none = 0,
+            top = 1,
+            bottom = 2,
+            left = 3,
+            right = 4,
+            top_left = 5,
+            bottom_left = 6,
+            top_right = 7,
+            bottom_right = 8,
+        };
+
+        pub const Gravity = enum(u32) {
+            none = 0,
+            top = 1,
+            bottom = 2,
+            left = 3,
+            right = 4,
+            top_left = 5,
+            bottom_left = 6,
+            top_right = 7,
+            bottom_right = 8,
+        };
+
+        pub const ConstraintAdjustment = enum(u32) {
+            none = 0,
+            slide_x = 1,
+            slide_y = 2,
+            flip_x = 4,
+            flip_y = 8,
+            resize_x = 16,
+            resize_y = 32,
+
+            pub fn contains(self: ConstraintAdjustment, other: ConstraintAdjustment) bool {
+                return @intFromEnum(self) & @intFromEnum(other) != 0;
+            }
+
+            pub fn merge(self: ConstraintAdjustment, other: ConstraintAdjustment) ConstraintAdjustment {
+                return @enumFromInt(@intFromEnum(self) | @intFromEnum(other));
+            }
+        };
+
+        pub const interface: common.Interface = .{
+            .name = "xdg_positioner",
+            .version = 7,
+            .method_count = 10,
+            .methods = &.{
+                .{
+                    .name = "destroy",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "set_size",
+                    .signature = "ii",
+                    .types = &.{
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_anchor_rect",
+                    .signature = "iiii",
+                    .types = &.{
+                        null,
+                        null,
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_anchor",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_gravity",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_constraint_adjustment",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_offset",
+                    .signature = "ii",
+                    .types = &.{
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_reactive",
+                    .signature = "3",
+                    .types = &.{},
+                },
+                .{
+                    .name = "set_parent_size",
+                    .signature = "3ii",
+                    .types = &.{
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_parent_configure",
+                    .signature = "3u",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+            .event_count = 0,
+            .events = &.{},
+        };
+    }; // Interface
+
+    pub const Surface = opaque {
+        const Self = @This();
+
+        const version: u32 = 7;
+
+        pub fn destroy(surface: *Surface) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(surface));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                0,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn getToplevel(surface: *Surface) !*Toplevel {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(surface));
+            const id = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                1,
+                &Toplevel.interface,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @as(?*anyopaque, null),
+            ) orelse return error.MarshalFailed;
+
+            return @ptrCast(@alignCast(id));
+        }
+
+        pub fn getPopup(surface: *Surface, parent: ?*const Surface, positioner: *const Positioner) !*Popup {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(surface));
+            const id = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                2,
+                &Popup.interface,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                @as(?*anyopaque, null),
+                parent,
+                positioner,
+            ) orelse return error.MarshalFailed;
+
+            return @ptrCast(@alignCast(id));
+        }
+
+        pub fn setWindowGeometry(surface: *Surface, x: i32, y: i32, width: i32, height: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(surface));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                3,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                x,
+                y,
+                width,
+                height,
+            );
+        }
+
+        pub fn ackConfigure(surface: *Surface, serial: u32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(surface));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                4,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                serial,
+            );
+        }
+
+        const Listener = extern struct {
+            configure: ?*const fn (data: ?*anyopaque, surface: *Surface, serial: u32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                configure: ?*const fn (data: *T, surface: *Surface, serial: u32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .configure = if (handlers.configure != null) configure else null,
+                };
+
+                fn configure(ptr: ?*anyopaque, surface_: *Surface, serial_: u32) callconv(.c) void {
+                    if (handlers.configure) |h| {
+                        h(@ptrCast(@alignCast(ptr)), surface_, serial_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const Error = enum(u32) {
+            not_constructed = 1,
+            already_constructed = 2,
+            unconfigured_buffer = 3,
+            invalid_serial = 4,
+            invalid_size = 5,
+            defunct_role_object = 6,
+        };
+
+        pub const interface: common.Interface = .{
+            .name = "xdg_surface",
+            .version = 7,
+            .method_count = 5,
+            .methods = &.{
+                .{
+                    .name = "destroy",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "get_toplevel",
+                    .signature = "n",
+                    .types = &.{
+                        &Toplevel.interface,
+                    },
+                },
+                .{
+                    .name = "get_popup",
+                    .signature = "n?oo",
+                    .types = &.{
+                        &Popup.interface,
+                        &Surface.interface,
+                        &Positioner.interface,
+                    },
+                },
+                .{
+                    .name = "set_window_geometry",
+                    .signature = "iiii",
+                    .types = &.{
+                        null,
+                        null,
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "ack_configure",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+            .event_count = 1,
+            .events = &.{
+                .{
+                    .name = "configure",
+                    .signature = "u",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+        };
+    }; // Interface
+
+    pub const Toplevel = opaque {
+        const Self = @This();
+
+        const version: u32 = 7;
+
+        pub fn destroy(toplevel: *Toplevel) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                0,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn setParent(toplevel: *Toplevel, parent: ?*const Toplevel) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                1,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                parent,
+            );
+        }
+
+        pub fn setTitle(toplevel: *Toplevel, title: [*:0]const u8) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                2,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                title,
+            );
+        }
+
+        pub fn setAppId(toplevel: *Toplevel, app_id: [*:0]const u8) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                3,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                app_id,
+            );
+        }
+
+        pub fn showWindowMenu(toplevel: *Toplevel, seat: *const Wl.Seat, serial: u32, x: i32, y: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                4,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                seat,
+                serial,
+                x,
+                y,
+            );
+        }
+
+        pub fn move(toplevel: *Toplevel, seat: *const Wl.Seat, serial: u32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                5,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                seat,
+                serial,
+            );
+        }
+
+        pub fn resize(toplevel: *Toplevel, seat: *const Wl.Seat, serial: u32, edges: ResizeEdge) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                6,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                seat,
+                serial,
+                @intFromEnum(edges),
+            );
+        }
+
+        pub fn setMaxSize(toplevel: *Toplevel, width: i32, height: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                7,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                width,
+                height,
+            );
+        }
+
+        pub fn setMinSize(toplevel: *Toplevel, width: i32, height: i32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                8,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                width,
+                height,
+            );
+        }
+
+        pub fn setMaximized(toplevel: *Toplevel) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                9,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn unsetMaximized(toplevel: *Toplevel) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                10,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn setFullscreen(toplevel: *Toplevel, output: ?*const Wl.Output) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                11,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                output,
+            );
+        }
+
+        pub fn unsetFullscreen(toplevel: *Toplevel) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                12,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn setMinimized(toplevel: *Toplevel) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(toplevel));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                13,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        const Listener = extern struct {
+            configure: ?*const fn (data: ?*anyopaque, toplevel: *Toplevel, width: i32, height: i32, states: *common.Array) callconv(.c) void,
+            close: ?*const fn (data: ?*anyopaque, toplevel: *Toplevel) callconv(.c) void,
+            configureBounds: ?*const fn (data: ?*anyopaque, toplevel: *Toplevel, width: i32, height: i32) callconv(.c) void,
+            wmCapabilities: ?*const fn (data: ?*anyopaque, toplevel: *Toplevel, capabilities: *common.Array) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                configure: ?*const fn (data: *T, toplevel: *Toplevel, width: i32, height: i32, states: *common.Array) void = null,
+                close: ?*const fn (data: *T, toplevel: *Toplevel) void = null,
+                configureBounds: ?*const fn (data: *T, toplevel: *Toplevel, width: i32, height: i32) void = null,
+                wmCapabilities: ?*const fn (data: *T, toplevel: *Toplevel, capabilities: *common.Array) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .configure = if (handlers.configure != null) configure else null,
+                    .close = if (handlers.close != null) close else null,
+                    .configureBounds = if (handlers.configureBounds != null) configureBounds else null,
+                    .wmCapabilities = if (handlers.wmCapabilities != null) wmCapabilities else null,
+                };
+
+                fn configure(ptr: ?*anyopaque, toplevel_: *Toplevel, width_: i32, height_: i32, states_: *common.Array) callconv(.c) void {
+                    if (handlers.configure) |h| {
+                        h(@ptrCast(@alignCast(ptr)), toplevel_, width_, height_, states_);
+                    }
+                }
+                fn close(ptr: ?*anyopaque, toplevel_: *Toplevel) callconv(.c) void {
+                    if (handlers.close) |h| {
+                        h(@ptrCast(@alignCast(ptr)), toplevel_);
+                    }
+                }
+                fn configureBounds(ptr: ?*anyopaque, toplevel_: *Toplevel, width_: i32, height_: i32) callconv(.c) void {
+                    if (handlers.configureBounds) |h| {
+                        h(@ptrCast(@alignCast(ptr)), toplevel_, width_, height_);
+                    }
+                }
+                fn wmCapabilities(ptr: ?*anyopaque, toplevel_: *Toplevel, capabilities_: *common.Array) callconv(.c) void {
+                    if (handlers.wmCapabilities) |h| {
+                        h(@ptrCast(@alignCast(ptr)), toplevel_, capabilities_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const Error = enum(u32) {
+            invalid_resize_edge = 0,
+            invalid_parent = 1,
+            invalid_size = 2,
+        };
+
+        pub const ResizeEdge = enum(u32) {
+            none = 0,
+            top = 1,
+            bottom = 2,
+            left = 4,
+            top_left = 5,
+            bottom_left = 6,
+            right = 8,
+            top_right = 9,
+            bottom_right = 10,
+        };
+
+        pub const State = enum(u32) {
+            maximized = 1,
+            fullscreen = 2,
+            resizing = 3,
+            activated = 4,
+            tiled_left = 5,
+            tiled_right = 6,
+            tiled_top = 7,
+            tiled_bottom = 8,
+            suspended = 9,
+            constrained_left = 10,
+            constrained_right = 11,
+            constrained_top = 12,
+            constrained_bottom = 13,
+        };
+
+        pub const WmCapabilities = enum(u32) {
+            window_menu = 1,
+            maximize = 2,
+            fullscreen = 3,
+            minimize = 4,
+        };
+
+        pub const interface: common.Interface = .{
+            .name = "xdg_toplevel",
+            .version = 7,
+            .method_count = 14,
+            .methods = &.{
+                .{
+                    .name = "destroy",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "set_parent",
+                    .signature = "?o",
+                    .types = &.{
+                        &Toplevel.interface,
+                    },
+                },
+                .{
+                    .name = "set_title",
+                    .signature = "s",
+                    .types = &.{
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_app_id",
+                    .signature = "s",
+                    .types = &.{
+                        null,
+                    },
+                },
+                .{
+                    .name = "show_window_menu",
+                    .signature = "ouii",
+                    .types = &.{
+                        &Wl.Seat.interface,
+                        null,
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "move",
+                    .signature = "ou",
+                    .types = &.{
+                        &Wl.Seat.interface,
+                        null,
+                    },
+                },
+                .{
+                    .name = "resize",
+                    .signature = "ouu",
+                    .types = &.{
+                        &Wl.Seat.interface,
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_max_size",
+                    .signature = "ii",
+                    .types = &.{
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_min_size",
+                    .signature = "ii",
+                    .types = &.{
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "set_maximized",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "unset_maximized",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "set_fullscreen",
+                    .signature = "?o",
+                    .types = &.{
+                        &Wl.Output.interface,
+                    },
+                },
+                .{
+                    .name = "unset_fullscreen",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "set_minimized",
+                    .signature = "",
+                    .types = &.{},
+                },
+            },
+            .event_count = 4,
+            .events = &.{
+                .{
+                    .name = "configure",
+                    .signature = "iia",
+                    .types = &.{
+                        null,
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "close",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "configure_bounds",
+                    .signature = "4ii",
+                    .types = &.{
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "wm_capabilities",
+                    .signature = "5a",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+        };
+    }; // Interface
+
+    pub const Popup = opaque {
+        const Self = @This();
+
+        const version: u32 = 7;
+
+        pub fn destroy(popup: *Popup) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(popup));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                0,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+            );
+        }
+
+        pub fn grab(popup: *Popup, seat: *const Wl.Seat, serial: u32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(popup));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                1,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                seat,
+                serial,
+            );
+        }
+
+        pub fn reposition(popup: *Popup, positioner: *const Positioner, token: u32) !void {
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(popup));
+            _ = inner.wl_proxy.wl_proxy_marshal_flags(
+                proxy,
+                2,
+                null,
+                inner.wl_proxy.wl_proxy_get_version(proxy),
+                0,
+                positioner,
+                token,
+            );
+        }
+
+        const Listener = extern struct {
+            configure: ?*const fn (data: ?*anyopaque, popup: *Popup, x: i32, y: i32, width: i32, height: i32) callconv(.c) void,
+            popupDone: ?*const fn (data: ?*anyopaque, popup: *Popup) callconv(.c) void,
+            repositioned: ?*const fn (data: ?*anyopaque, popup: *Popup, token: u32) callconv(.c) void,
+        };
+
+        pub fn addListener(
+            self: *Self,
+            comptime T: type,
+            state: *T,
+            comptime handlers: struct {
+                configure: ?*const fn (data: *T, popup: *Popup, x: i32, y: i32, width: i32, height: i32) void = null,
+                popupDone: ?*const fn (data: *T, popup: *Popup) void = null,
+                repositioned: ?*const fn (data: *T, popup: *Popup, token: u32) void = null,
+            },
+        ) !void {
+            const S = struct {
+                const listener = Self.Listener{
+                    .configure = if (handlers.configure != null) configure else null,
+                    .popupDone = if (handlers.popupDone != null) popupDone else null,
+                    .repositioned = if (handlers.repositioned != null) repositioned else null,
+                };
+
+                fn configure(ptr: ?*anyopaque, popup_: *Popup, x_: i32, y_: i32, width_: i32, height_: i32) callconv(.c) void {
+                    if (handlers.configure) |h| {
+                        h(@ptrCast(@alignCast(ptr)), popup_, x_, y_, width_, height_);
+                    }
+                }
+                fn popupDone(ptr: ?*anyopaque, popup_: *Popup) callconv(.c) void {
+                    if (handlers.popupDone) |h| {
+                        h(@ptrCast(@alignCast(ptr)), popup_);
+                    }
+                }
+                fn repositioned(ptr: ?*anyopaque, popup_: *Popup, token_: u32) callconv(.c) void {
+                    if (handlers.repositioned) |h| {
+                        h(@ptrCast(@alignCast(ptr)), popup_, token_);
+                    }
+                }
+            };
+            const proxy: *inner.wl_proxy = @ptrCast(@alignCast(self));
+            if (inner.wl_proxy.wl_proxy_add_listener(proxy, @ptrCast(@alignCast(@constCast(&S.listener))), @ptrCast(@alignCast(state))) != 0) {
+                return error.AddListenerFailed;
+            }
+        }
+
+        pub const Error = enum(u32) {
+            invalid_grab = 0,
+        };
+
+        pub const interface: common.Interface = .{
+            .name = "xdg_popup",
+            .version = 7,
+            .method_count = 3,
+            .methods = &.{
+                .{
+                    .name = "destroy",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "grab",
+                    .signature = "ou",
+                    .types = &.{
+                        &Wl.Seat.interface,
+                        null,
+                    },
+                },
+                .{
+                    .name = "reposition",
+                    .signature = "3ou",
+                    .types = &.{
+                        &Positioner.interface,
+                        null,
+                    },
+                },
+            },
+            .event_count = 3,
+            .events = &.{
+                .{
+                    .name = "configure",
+                    .signature = "iiii",
+                    .types = &.{
+                        null,
+                        null,
+                        null,
+                        null,
+                    },
+                },
+                .{
+                    .name = "popup_done",
+                    .signature = "",
+                    .types = &.{},
+                },
+                .{
+                    .name = "repositioned",
+                    .signature = "3u",
+                    .types = &.{
+                        null,
+                    },
+                },
+            },
+        };
+    }; // Interface
+
+};

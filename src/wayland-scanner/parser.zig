@@ -50,10 +50,42 @@ fn read(reader: *xml.Reader) !xml.Reader.Node {
     };
 }
 
+fn attr(arena: mem.Allocator, reader: *xml.Reader, name: []const u8) ![]const u8 {
+    const i = reader.attributeIndex(name) orelse return error.AttributeNotFound;
+    return try arena.dupe(u8, try reader.attributeValue(i));
+}
+
+fn attrOpt(arena: mem.Allocator, reader: *xml.Reader, name: []const u8) !?[]const u8 {
+    const i = reader.attributeIndex(name) orelse return null;
+    return try arena.dupe(u8, try reader.attributeValue(i));
+}
+
+fn attrBool(reader: *xml.Reader, name: []const u8) bool {
+    if (reader.attributeIndex(name)) |i| {
+        if (reader.attributeValue(i)) |val| {
+            return mem.eql(u8, val, "true");
+        } else |_| {}
+    }
+    return false;
+}
+
+fn skipElement(reader: *xml.Reader) !void {
+    var depth: u16 = 1;
+    while (depth > 0) {
+        const node = try read(reader);
+        switch (node) {
+            .eof => return error.UnexpectedEof,
+            .element_start => depth += 1,
+            .element_end => depth -= 1,
+            else => continue,
+        }
+    }
+}
+
 fn parseProtocol(arena: mem.Allocator, reader: *xml.Reader) !protocol.Protocol {
     var proto: protocol.Protocol = .empty;
 
-    proto.name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.ProtocolNameNotFound));
+    proto.name = try attr(arena, reader, "name");
     std.log.debug("Parsing protocol: {s}", .{proto.name});
 
     while (true) {
@@ -61,44 +93,31 @@ fn parseProtocol(arena: mem.Allocator, reader: *xml.Reader) !protocol.Protocol {
         std.log.debug("Protocol node={any}", .{node});
         switch (node) {
             .element_start => {
-                std.log.debug("  Protocol element: <{s}>", .{reader.elementName()});
-                if (mem.eql(u8, reader.elementName(), "copyright")) {
-                    // Consume entire copyright element
-                    var copy_depth: u16 = 1;
-                    while (copy_depth > 0) {
-                        const copy_node = try read(reader);
-                        switch (copy_node) {
-                            .eof => return error.UnexpectedEof,
-                            .element_start => copy_depth += 1,
-                            .element_end => copy_depth -= 1,
-                            else => continue,
-                        }
-                    }
-                } else if (mem.eql(u8, reader.elementName(), "interface")) {
+                const el = reader.elementName();
+                std.log.debug("  Protocol element: <{s}>", .{el});
+                if (mem.eql(u8, el, "copyright")) {
+                    try skipElement(reader);
+                } else if (mem.eql(u8, el, "interface")) {
                     std.log.debug("  Found interface!", .{});
                     try proto.interfaces.append(arena, try parseInterface(arena, reader));
                 } else {
                     return error.UnexpectedElementInProtocol;
                 }
             },
-            .element_end => if (mem.eql(u8, reader.elementName(), "protocol")) break,
+            .element_end => if (mem.eql(u8, reader.elementName(), "protocol")) {
+                std.log.debug("Protocol done: {d} interfaces", .{proto.interfaces.items.len});
+                return proto;
+            },
             .eof => return error.UnexpectedEof,
             else => continue,
         }
     }
-
-    std.log.debug("Protocol done: {d} interfaces", .{proto.interfaces.items.len});
-    return proto;
 }
 
 fn parseInterface(arena: mem.Allocator, reader: *xml.Reader) !protocol.Interface {
     var interface: protocol.Interface = .empty;
-    interface.name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.InterfaceNameNotFound));
-    interface.version = try std.fmt.parseInt(
-        u16,
-        try reader.attributeValue(reader.attributeIndex("version") orelse return error.InterfaceVersionNotFound),
-        10,
-    );
+    interface.name = try attr(arena, reader, "name");
+    interface.version = try std.fmt.parseInt(u16, (try attr(arena, reader, "version")), 10);
     std.log.debug("  Parsing interface: {s} v{d}", .{ interface.name, interface.version });
 
     while (true) {
@@ -107,123 +126,95 @@ fn parseInterface(arena: mem.Allocator, reader: *xml.Reader) !protocol.Interface
         switch (node) {
             .eof => return error.UnexpectedEof,
             .element_start => {
-                if (mem.eql(u8, reader.elementName(), "description")) {
+                const el = reader.elementName();
+                if (mem.eql(u8, el, "description")) {
                     interface.description = try parseDescription(arena, reader);
-                } else if (mem.eql(u8, reader.elementName(), "request")) {
-                    try interface.requests.append(arena, try parseRequest(arena, reader));
-                } else if (mem.eql(u8, reader.elementName(), "event")) {
-                    try interface.events.append(arena, try parseEvent(arena, reader));
-                } else if (mem.eql(u8, reader.elementName(), "enum")) {
+                } else if (mem.eql(u8, el, "request")) {
+                    try interface.requests.append(arena, try parseMessage(arena, reader, .request));
+                } else if (mem.eql(u8, el, "event")) {
+                    try interface.events.append(arena, try parseMessage(arena, reader, .event));
+                } else if (mem.eql(u8, el, "enum")) {
                     try interface.enums.append(arena, try parseEnum(arena, reader));
                 } else {
                     return error.UnexpectedElementInInterface;
                 }
             },
-            .element_end => if (mem.eql(u8, reader.elementName(), "interface")) break,
+            .element_end => if (mem.eql(u8, reader.elementName(), "interface")) {
+                std.log.debug("    Interface done: {d} requests, {d} events, {d} enums", .{ interface.requests.items.len, interface.events.items.len, interface.enums.items.len });
+                return interface;
+            },
             else => continue,
         }
     }
-
-    std.log.debug("    Interface done: {d} requests, {d} events, {d} enums", .{ interface.requests.items.len, interface.events.items.len, interface.enums.items.len });
-    return interface;
 }
 
 fn parseDescription(arena: mem.Allocator, reader: *xml.Reader) !protocol.Description {
-    var description: protocol.Description = .empty;
-    description.summary = if (reader.attributeIndex("summary")) |i| try arena.dupe(u8, try reader.attributeValue(i)) else null;
+    var description: protocol.Description = .{
+        .summary = try attrOpt(arena, reader, "summary"),
+        .description = null,
+    };
 
     while (true) {
         const node = try read(reader);
         switch (node) {
             .text => description.description = try arena.dupe(u8, try reader.text()),
             .element_start => return error.UnexpectedChildElement,
-            .element_end => if (mem.eql(u8, reader.elementName(), "description")) break,
+            .element_end => if (mem.eql(u8, reader.elementName(), "description")) return description,
             .eof => return error.UnexpectedEof,
             else => continue,
         }
     }
-
-    return description;
 }
 
-fn parseRequest(arena: mem.Allocator, reader: *xml.Reader) !protocol.Message {
-    var request: protocol.Message = .empty;
+const MessageKind = enum { request, event };
 
-    request.name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.RequestNameNotFound));
-    if (reader.attributeIndex("type")) |i| {
-        request.type = try protocol.MessageType.parse(try reader.attributeValue(i));
-    }
-    if (reader.attributeIndex("since")) |i| {
-        request.since = try std.fmt.parseInt(u16, try reader.attributeValue(i), 10);
-    }
-
-    while (true) {
-        const node = try read(reader);
-        switch (node) {
-            .element_start => {
-                if (mem.eql(u8, reader.elementName(), "description")) {
-                    request.description = try parseDescription(arena, reader);
-                } else if (mem.eql(u8, reader.elementName(), "arg")) {
-                    try request.args.append(arena, try parseArg(arena, reader));
-                } else {
-                    return error.UnexpectedElementInRequest;
-                }
-            },
-            .element_end => if (mem.eql(u8, reader.elementName(), "request")) break,
-            .eof => return error.UnexpectedEof,
-            else => continue,
-        }
-    }
-
-    return request;
-}
-
-fn parseEvent(arena: mem.Allocator, reader: *xml.Reader) !protocol.Message {
+fn parseMessage(arena: mem.Allocator, reader: *xml.Reader, kind: MessageKind) !protocol.Message {
     var message: protocol.Message = .empty;
 
-    message.name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.EventNameNotFound));
-    if (reader.attributeIndex("type")) |i| {
-        message.type = try protocol.MessageType.parse(try reader.attributeValue(i));
+    message.name = try attr(arena, reader, "name");
+    if (try attrOpt(arena, reader, "type")) |type_str| {
+        message.type = try protocol.MessageType.parse(type_str);
     }
-    if (reader.attributeIndex("since")) |i| {
-        message.since = try std.fmt.parseInt(u16, try reader.attributeValue(i), 10);
+    if (try attrOpt(arena, reader, "since")) |since_str| {
+        message.since = try std.fmt.parseInt(u16, since_str, 10);
     }
+
+    const end_tag = switch (kind) {
+        .request => "request",
+        .event => "event",
+    };
 
     while (true) {
         const node = try read(reader);
         switch (node) {
             .element_start => {
-                if (mem.eql(u8, reader.elementName(), "description")) {
+                const el = reader.elementName();
+                if (mem.eql(u8, el, "description")) {
                     message.description = try parseDescription(arena, reader);
-                } else if (mem.eql(u8, reader.elementName(), "arg")) {
+                } else if (mem.eql(u8, el, "arg")) {
                     try message.args.append(arena, try parseArg(arena, reader));
                 } else {
-                    return error.UnexpectedElementInEvent;
+                    return switch (kind) {
+                        .request => error.UnexpectedElementInRequest,
+                        .event => error.UnexpectedElementInEvent,
+                    };
                 }
             },
-            .element_end => if (mem.eql(u8, reader.elementName(), "event")) break,
+            .element_end => if (mem.eql(u8, reader.elementName(), end_tag)) return message,
             .eof => return error.UnexpectedEof,
             else => continue,
         }
     }
-
-    return message;
 }
 
 fn parseArg(arena: mem.Allocator, reader: *xml.Reader) !protocol.Arg {
-    const type_: protocol.ArgType = try .parse(try reader.attributeValue(reader.attributeIndex("type") orelse return error.ArgTypeNotFound));
-    const nullable: bool = if (reader.attributeIndex("allow-null")) |i|
-        if (mem.eql(u8, try reader.attributeValue(i), "true")) true else false
-    else
-        false;
-
     const arg: protocol.Arg = .{
-        .name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.ArgNameNotFound)),
-        .type = type_,
-        .enum_ = if (reader.attributeIndex("enum")) |i| try arena.dupe(u8, try reader.attributeValue(i)) else null,
-        .interface = if (reader.attributeIndex("interface")) |i| try arena.dupe(u8, try reader.attributeValue(i)) else null,
-        .summary = if (reader.attributeIndex("summary")) |i| try arena.dupe(u8, try reader.attributeValue(i)) else null,
-        .nullable = nullable,
+        .name = try attr(arena, reader, "name"),
+        .type = try protocol.ArgType.parse(try reader.attributeValue(reader.attributeIndex("type") orelse return error.ArgTypeNotFound)),
+        .@"enum" = try attrOpt(arena, reader, "enum"),
+        .interface = try attrOpt(arena, reader, "interface"),
+        .summary = try attrOpt(arena, reader, "summary"),
+        .nullable = attrBool(reader, "allow-null"),
     };
 
     while (true) {
@@ -238,16 +229,12 @@ fn parseArg(arena: mem.Allocator, reader: *xml.Reader) !protocol.Arg {
 }
 
 fn parseEnum(arena: mem.Allocator, reader: *xml.Reader) !protocol.Enum {
-    var enum_: protocol.Enum = .empty;
+    var @"enum": protocol.Enum = .empty;
 
-    enum_.name = try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.EnumNameNotFound));
-    if (reader.attributeIndex("bitfield")) |i| {
-        if (mem.eql(u8, try reader.attributeValue(i), "true")) {
-            enum_.bitfield = true;
-        }
-    }
-    if (reader.attributeIndex("since")) |i| {
-        enum_.since = try std.fmt.parseInt(u16, try reader.attributeValue(i), 10);
+    @"enum".name = try attr(arena, reader, "name");
+    @"enum".bitfield = attrBool(reader, "bitfield");
+    if (try attrOpt(arena, reader, "since")) |since_str| {
+        @"enum".since = try std.fmt.parseInt(u16, since_str, 10);
     }
 
     while (true) {
@@ -255,42 +242,42 @@ fn parseEnum(arena: mem.Allocator, reader: *xml.Reader) !protocol.Enum {
         switch (node) {
             .eof => return error.UnexpectedEof,
             .element_start => {
-                if (mem.eql(u8, reader.elementName(), "description")) {
-                    enum_.description = try parseDescription(arena, reader);
-                } else if (mem.eql(u8, reader.elementName(), "entry")) {
-                    try enum_.entries.append(arena, try parseEntry(arena, reader));
+                const el = reader.elementName();
+                if (mem.eql(u8, el, "description")) {
+                    @"enum".description = try parseDescription(arena, reader);
+                } else if (mem.eql(u8, el, "entry")) {
+                    try @"enum".entries.append(arena, try parseEntry(arena, reader));
                 } else {
                     return error.UnexpectedElementInEnum;
                 }
             },
-            .element_end => if (mem.eql(u8, reader.elementName(), "enum")) break,
+            .element_end => if (mem.eql(u8, reader.elementName(), "enum")) return @"enum",
             else => continue,
         }
     }
-
-    return enum_;
 }
 
 fn parseEntry(arena: mem.Allocator, reader: *xml.Reader) !protocol.Entry {
-    const name = std.zig.fmtId(try arena.dupe(u8, try reader.attributeValue(reader.attributeIndex("name") orelse return error.AttrNameNotFound)));
+    const name = std.zig.fmtId(try attr(arena, reader, "name"));
 
-    const entry: protocol.Entry = .{
+    var entry: protocol.Entry = .{
         .name = try std.fmt.allocPrint(arena, "{f}", .{name}),
-        .value = try std.fmt.parseInt(
-            u32,
-            try reader.attributeValue(reader.attributeIndex("value") orelse return error.AttrValueNotFound),
-            0,
-        ),
-        .since = if (reader.attributeIndex("since")) |i| try std.fmt.parseInt(u16, try reader.attributeValue(i), 10) else 1,
-        .summary = if (reader.attributeIndex("summary")) |i| try arena.dupe(u8, try reader.attributeValue(i)) else null,
+        .value = try std.fmt.parseInt(u32, (try attr(arena, reader, "value")), 0),
+        .since = if (try attrOpt(arena, reader, "since")) |s| try std.fmt.parseInt(u16, s, 10) else 1,
+        .summary = try attrOpt(arena, reader, "summary"),
+        .description = null,
     };
 
     while (true) {
         const node = try read(reader);
         switch (node) {
             .eof => return error.UnexpectedEof,
-            .element_start => return error.UnexpectedChildElement,
-            .element_end => return entry,
+            .element_start => {
+                if (mem.eql(u8, reader.elementName(), "description")) {
+                    entry.description = try parseDescription(arena, reader);
+                }
+            },
+            .element_end => if (mem.eql(u8, reader.elementName(), "entry")) return entry,
             else => continue,
         }
     }

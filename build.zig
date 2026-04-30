@@ -1,7 +1,5 @@
 const std = @import("std");
 
-const Scanner = @import("wayland").Scanner;
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -15,6 +13,8 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
+    exe.use_lld = true;
+    exe.use_llvm = true;
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -39,26 +39,11 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const scanner = Scanner.create(b, .{});
-    scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
-    scanner.generate("wl_compositor", 1);
-    scanner.generate("wl_shm", 1);
-    scanner.generate("xdg_wm_base", 1);
-
-    const wayland = b.createModule(.{
-        .root_source_file = scanner.result,
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.linkSystemLibrary("wayland-client", .{});
-    exe.root_module.addImport("wayland", wayland);
-
     const linux_wayland_mod = b.createModule(.{
         .root_source_file = b.path("src/window/linux/wayland.zig"),
         .target = target,
         .optimize = optimize,
     });
-    linux_wayland_mod.addImport("wayland", wayland);
 
     const window_mod = b.createModule(.{
         .root_source_file = b.path("src/window/root.zig"),
