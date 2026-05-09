@@ -1,4 +1,5 @@
 const std = @import("std");
+const ArrayList = std.ArrayList;
 const zig = std.zig;
 const testing = std.testing;
 const mem = std.mem;
@@ -138,9 +139,26 @@ fn generateRequest(allocator: mem.Allocator, writer: *std.Io.Writer, interface_n
     const first_arg_name = first_arg_iter.first();
 
     try writer.print(
+        \\{s}
         \\pub fn {s}({s}) {s} {{
         \\
     , .{
+        if (request.description) |desciption| blk: {
+            var comment: ArrayList(u8) = .empty;
+
+            if (desciption.summary) |sum| {
+                try comment.print(allocator, "/// {s}.", .{sum});
+            }
+
+            if (desciption.description) |desc| {
+                var lines = mem.splitScalar(u8, desc, '\n');
+                while (lines.next()) |line| {
+                    try comment.print(allocator, "\n/// {s}", .{mem.trim(u8, mem.trim(u8, line, "\t"), " ")});
+                }
+            }
+
+            break :blk try comment.toOwnedSlice(allocator);
+        } else "",
         request_name,
         args,
         if (mem.eql(u8, return_type, "void")) return_type else try mem.concat(allocator, u8, &[_][]const u8{ "!", return_type }),

@@ -87,7 +87,7 @@ fn wayland(b: *std.Build, options: WaylandOptions) *std.Build.Module {
         .optimize = options.optimize,
     });
 
-    const scanner_run = b.addRunArtifact(b.addExecutable(.{
+    const scanner_exe = b.addExecutable(.{
         .name = "wayland-scanner",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/wayland-scanner/generator.zig"),
@@ -97,7 +97,9 @@ fn wayland(b: *std.Build, options: WaylandOptions) *std.Build.Module {
                 .{ .name = "xml", .module = xml_dep.module("xml") },
             },
         }),
-    }));
+    });
+
+    const scanner_run = b.addRunArtifact(scanner_exe);
 
     const wayland_client_path = scanner_run.addOutputFileArg("wayland-client.zig");
     scanner_run.addFileArg(.{ .cwd_relative = "/usr/share/wayland/wayland.xml" });

@@ -45,9 +45,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *St
 
 fn xdgWmBaseListener(wm_base: *xdg.WmBase, event: xdg.WmBase.Event, _: *State) void {
     switch (event) {
-        .ping => |params| {
-            wm_base.pong(params.serial);
-        },
+        .ping => |params| wm_base.pong(params.serial),
     }
 }
 
