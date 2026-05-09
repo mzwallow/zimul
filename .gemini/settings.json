@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "zig-docs": {
+      "command": "bunx",
+      "args": ["zig-mcp@latest", "--version", "0.16.0"]
+    }
+  }
+}
