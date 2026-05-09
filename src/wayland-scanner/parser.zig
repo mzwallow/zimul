@@ -8,8 +8,8 @@ const xml = @import("xml");
 const protocol = @import("protocol.zig");
 const wayland_scanner = @import("root.zig");
 
-pub fn parse(areana: mem.Allocator, input_reader: *io.Reader) !protocol.Protocol {
-    var streaming_reader = xml.Reader.Streaming.init(areana, input_reader, .{});
+pub fn parse(gpa: mem.Allocator, input_reader: *io.Reader) !protocol.Protocol {
+    var streaming_reader = xml.Reader.Streaming.init(gpa, input_reader, .{});
     defer streaming_reader.deinit();
 
     const reader = &streaming_reader.interface;
@@ -23,7 +23,7 @@ pub fn parse(areana: mem.Allocator, input_reader: *io.Reader) !protocol.Protocol
             .xml_declaration => continue,
             .element_start => {
                 if (mem.eql(u8, reader.elementName(), "protocol")) {
-                    proto = try parseProtocol(areana, reader);
+                    proto = try parseProtocol(gpa, reader);
                 } else {
                     return error.UnexpectedRootElement;
                 }

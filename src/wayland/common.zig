@@ -16,82 +16,6 @@ pub const Message = extern struct {
     }
 };
 
-test "interface size" {
-    std.testing.log_level = .debug;
-
-    const ii = extern struct {
-        name: [*:0]const u8,
-        version: u32,
-        method_count: u32,
-        methods: ?[*]const Message,
-        event_count: u32,
-        events: ?[*]const Message,
-    };
-
-    std.log.debug(
-        \\========================
-        \\Interface size:
-        \\  size: {d},
-        \\  align: {d},
-        \\  offset"name": {d},
-        \\  offset"version": {d},
-        \\  offset"method_count": {d},
-        \\  offset"methods": {d},
-        \\  offset"event_count": {d},
-        \\  offset"events": {d},
-        \\========================
-        \\
-    , .{
-        @sizeOf(ii),
-        @alignOf(ii),
-        @offsetOf(ii, "name"),
-        @offsetOf(ii, "version"),
-        @offsetOf(ii, "method_count"),
-        @offsetOf(ii, "methods"),
-        @offsetOf(ii, "event_count"),
-        @offsetOf(ii, "events"),
-    });
-
-    std.log.debug(
-        \\========================
-        \\Message size:
-        \\  size: {d},
-        \\  align: {d},
-        \\  offset"name": {d},
-        \\  offset"signature": {d},
-        \\  offset"types": {d},
-        \\  "types": {d},
-        \\========================
-        \\
-    , .{
-        @sizeOf(Message),
-        @alignOf(Message),
-        @offsetOf(Message, "name"),
-        @offsetOf(Message, "signature"),
-        @offsetOf(Message, "types"),
-        @sizeOf([]?*const Interface),
-    });
-
-    layout(Message);
-}
-
-fn layout(comptime T: type) void {
-    std.log.debug("Type:\t{any}", .{T});
-    std.log.debug("\tsize:\t{d}", .{@sizeOf(T)});
-    std.log.debug("\talign:\t{d}", .{@alignOf(T)});
-
-    const info = @typeInfo(T);
-    const t: T = .empty();
-
-    inline for (info.@"struct".fields) |field| {
-        std.log.debug("\tField: {s}", .{field.name});
-        std.log.debug("\t\tsize:\t{any}", .{@sizeOf(field.type)});
-        std.log.debug("\t\toffset:\t{any}", .{@offsetOf(T, field.name)});
-        std.log.debug("\t\talign:\t{any}", .{field.alignment});
-        std.log.debug("\t\taddr:\t{*}", .{&@field(t, field.name)});
-    }
-}
-
 pub const Interface = extern struct {
     name: [*:0]const u8,
     version: u32,
@@ -162,3 +86,79 @@ pub const Argument = extern union {
         return @intCast(i * 256);
     }
 };
+
+fn layout(comptime T: type) void {
+    std.log.debug("Type:\t{any}", .{T});
+    std.log.debug("\tsize:\t{d}", .{@sizeOf(T)});
+    std.log.debug("\talign:\t{d}", .{@alignOf(T)});
+
+    const info = @typeInfo(T);
+    const t: T = .empty();
+
+    inline for (info.@"struct".fields) |field| {
+        std.log.debug("\tField: {s}", .{field.name});
+        std.log.debug("\t\tsize:\t{any}", .{@sizeOf(field.type)});
+        std.log.debug("\t\toffset:\t{any}", .{@offsetOf(T, field.name)});
+        std.log.debug("\t\talign:\t{any}", .{field.alignment});
+        std.log.debug("\t\taddr:\t{*}", .{&@field(t, field.name)});
+    }
+}
+
+test "interface size" {
+    std.testing.log_level = .debug;
+
+    const ii = extern struct {
+        name: [*:0]const u8,
+        version: u32,
+        method_count: u32,
+        methods: ?[*]const Message,
+        event_count: u32,
+        events: ?[*]const Message,
+    };
+
+    std.log.debug(
+        \\========================
+        \\Interface size:
+        \\  size: {d},
+        \\  align: {d},
+        \\  offset"name": {d},
+        \\  offset"version": {d},
+        \\  offset"method_count": {d},
+        \\  offset"methods": {d},
+        \\  offset"event_count": {d},
+        \\  offset"events": {d},
+        \\========================
+        \\
+    , .{
+        @sizeOf(ii),
+        @alignOf(ii),
+        @offsetOf(ii, "name"),
+        @offsetOf(ii, "version"),
+        @offsetOf(ii, "method_count"),
+        @offsetOf(ii, "methods"),
+        @offsetOf(ii, "event_count"),
+        @offsetOf(ii, "events"),
+    });
+
+    std.log.debug(
+        \\========================
+        \\Message size:
+        \\  size: {d},
+        \\  align: {d},
+        \\  offset"name": {d},
+        \\  offset"signature": {d},
+        \\  offset"types": {d},
+        \\  "types": {d},
+        \\========================
+        \\
+    , .{
+        @sizeOf(Message),
+        @alignOf(Message),
+        @offsetOf(Message, "name"),
+        @offsetOf(Message, "signature"),
+        @offsetOf(Message, "types"),
+        @sizeOf([]?*const Interface),
+    });
+
+    layout(Message);
+}

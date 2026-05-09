@@ -1,6 +1,5 @@
 const std = @import("std");
 const mem = std.mem;
-const common = @import("common.zig");
 
 pub const Protocol = struct {
     const Self = @This();
@@ -47,15 +46,12 @@ pub const Message = struct {
     description: ?Description,
     args: std.ArrayList(Arg),
 
-    inner: common.Message,
-
     pub const empty: Self = .{
         .name = undefined,
         .type = null,
         .since = 1,
         .description = null,
         .args = .empty,
-        .inner = undefined,
     };
 
     pub fn signature(self: Self, allocator: mem.Allocator) ![]const u8 {

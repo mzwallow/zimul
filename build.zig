@@ -13,9 +13,9 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
-    exe.use_lld = true;
-    exe.use_llvm = true;
     b.installArtifact(exe);
+    exe.use_llvm = true;
+    exe.root_module.linkSystemLibrary("wayland-client", .{ .needed = true });
 
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
@@ -30,19 +30,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const wayland_scanner = b.createModule(.{
-        .root_source_file = b.path("src/wayland-scanner/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "xml", .module = xml_dep.module("xml") },
-        },
-    });
-
     const linux_wayland_mod = b.createModule(.{
         .root_source_file = b.path("src/window/linux/wayland.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "wayland", .module = wayland(b, .{ .target = target, .optimize = optimize }) },
+        },
     });
 
     const window_mod = b.createModule(.{
@@ -62,7 +56,14 @@ pub fn build(b: *std.Build) void {
     const run_linux_wayland_tests = b.addRunArtifact(linux_wayland_tests);
     test_step.dependOn(&run_linux_wayland_tests.step);
 
-    const wayland_scanner_tests = b.addTest(.{ .root_module = wayland_scanner });
+    const wayland_scanner_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/wayland-scanner/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "xml", .module = xml_dep.module("xml") },
+        },
+    }) });
     const run_wayland_scanner_tests = b.addRunArtifact(wayland_scanner_tests);
     test_step.dependOn(&run_wayland_scanner_tests.step);
 
@@ -73,4 +74,68 @@ pub fn build(b: *std.Build) void {
     });
     const check_step = b.step("check", "Check");
     check_step.dependOn(&exe_check.step);
+}
+
+const WaylandOptions = struct {
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+};
+
+fn wayland(b: *std.Build, options: WaylandOptions) *std.Build.Module {
+    const xml_dep = b.dependency("xml", .{
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+
+    const scanner_run = b.addRunArtifact(b.addExecutable(.{
+        .name = "wayland-scanner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/wayland-scanner/generator.zig"),
+            .target = b.graph.host,
+            .optimize = options.optimize,
+            .imports = &.{
+                .{ .name = "xml", .module = xml_dep.module("xml") },
+            },
+        }),
+    }));
+
+    const wayland_client_path = scanner_run.addOutputFileArg("wayland-client.zig");
+    scanner_run.addFileArg(.{ .cwd_relative = "/usr/share/wayland/wayland.xml" });
+    scanner_run.addFileArg(.{ .cwd_relative = "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml" });
+
+    const wayland_common = b.createModule(.{
+        .root_source_file = b.path("src/wayland/common.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+
+    const wayland_client_core = b.createModule(.{
+        .root_source_file = b.path("src/wayland/client.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "wayland_common", .module = wayland_common },
+        },
+    });
+
+    const wayland_protocol_client = b.createModule(.{
+        .root_source_file = wayland_client_path,
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "wayland_common", .module = wayland_common },
+            .{ .name = "wayland_client_core", .module = wayland_client_core },
+        },
+    });
+
+    return b.createModule(
+        .{
+            .root_source_file = b.path("src/wayland/root.zig"),
+            .target = options.target,
+            .optimize = options.optimize,
+            .imports = &.{
+                .{ .name = "wayland_protocol_client", .module = wayland_protocol_client },
+            },
+        },
+    );
 }

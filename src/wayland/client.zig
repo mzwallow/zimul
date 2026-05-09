@@ -1,8 +1,9 @@
 const std = @import("std");
 
-const Argument = @import("common.zig").Argument;
-const Array = @import("common.zig").Array;
-const Interface = @import("common.zig").Interface;
+const wayland_common = @import("wayland_common");
+const Argument = wayland_common.Argument;
+const Array = wayland_common.Array;
+const Interface = wayland_common.Interface;
 
 pub const wl_event_queue = opaque {
     pub extern fn wl_event_queue_destroy(queue: *wl_event_queue) void;
@@ -26,7 +27,7 @@ pub const wl_display = opaque {
     // wl_display_dispatch_queue
     // wl_display_dispatch_queue_pending
     // wl_display_dispatch_queue_pending_single
-    // wl_display_dispatch
+    pub extern fn wl_display_dispatch(display: *wl_display) c_int;
     // wl_display_dispatch_pending
     // wl_display_dispatch_pending_single
     // wl_display_get_error
@@ -43,7 +44,7 @@ pub const wl_proxy = opaque {
     // wl_proxy_add_dispatcher
     // wl_proxy_marshal_array_constructor
     // wl_proxy_marshal_array_constructor_versioned
-    pub extern fn wl_proxy_marshal_flags(proxy: *wl_proxy, opcode: u32, interface: *const Interface, version: u32, flags: u32, ...) ?*wl_proxy;
+    pub extern fn wl_proxy_marshal_flags(proxy: *wl_proxy, opcode: u32, interface: ?*const Interface, version: u32, flags: u32, ...) ?*wl_proxy;
     // wl_proxy_marshal_array_flags
     // wl_proxy_marshal
     // wl_proxy_marshal_constructor
