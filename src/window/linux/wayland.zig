@@ -43,6 +43,14 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *St
     }
 }
 
+fn xdgWmBaseListener(wm_base: *xdg.WmBase, event: xdg.WmBase.Event, _: *State) void {
+    switch (event) {
+        .ping => |params| {
+            wm_base.pong(params.serial);
+        },
+    }
+}
+
 fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, state: *State) void {
     switch (event) {
         .configure => |params| {
@@ -94,6 +102,8 @@ pub fn run(window_state: *window.State) !void {
     try registry.addListener(State, &state, registryListener);
 
     try display.roundtrip();
+
+    try state.wm_base.addListener(State, &state, xdgWmBaseListener);
 
     state.surface = try state.compositor.createSurface();
     defer state.surface.destroy();
