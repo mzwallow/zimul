@@ -15,10 +15,15 @@ const State = struct {
     compositor: *wl.Compositor,
     shm: *wl.Shm,
     wm_base: *xdg.WmBase,
+    seat: *wl.Seat,
+    pointer: *wl.Pointer,
+    // wl_data_device_manager -> copy-and-paste and drag-and-drag, tied with wl_seat
+    // wl_output -> monitor
 
     // Objects
     surface: *wl.Surface,
     xdg_surface: *xdg.Surface,
+    xdg_toplevel: *xdg.Toplevel,
 
     // States
     configured: bool = false,
@@ -28,6 +33,8 @@ const State = struct {
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *State) void {
     switch (event) {
         .global => |params| {
+            // std.log.debug("inteface: {s}", .{params.interface});
+
             if (mem.orderZ(u8, params.interface, wl.Compositor.interface.name) == .eq) {
                 std.log.debug("Binding wl_compositor", .{});
                 state.compositor = registry.bind(params.name, wl.Compositor, params.version) catch @panic("Failed to bind wl_compositor");
@@ -37,6 +44,9 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, state: *St
             } else if (mem.orderZ(u8, params.interface, xdg.WmBase.interface.name) == .eq) {
                 std.log.debug("Binding xdg_wm_base", .{});
                 state.wm_base = registry.bind(params.name, xdg.WmBase, params.version) catch @panic("Failed to bind xdg_wm_base");
+            } else if (mem.orderZ(u8, params.interface, wl.Seat.interface.name) == .eq) {
+                std.log.debug("Binding wl_seat", .{});
+                state.seat = registry.bind(params.name, wl.Seat, params.version) catch @panic("Failed to bind wl_seat");
             }
         },
         .global_remove => {},
@@ -83,6 +93,31 @@ fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, state: *Stat
     }
 }
 
+fn pointerListener(_: *wl.Pointer, _: wl.Pointer.Event, _: *State) void {
+    // TODO:
+}
+
+fn seatListener(seat: *wl.Seat, event: wl.Seat.Event, state: *State) void {
+    switch (event) {
+        .name => |params| {
+            std.log.debug("seat name: {s}", .{params.name});
+        },
+        .capabilities => |params| {
+            if (params.capabilities.pointer and params.capabilities.keyboard) {
+                std.log.debug("capabilities: pointer, keyboard", .{});
+                state.pointer = seat.getPointer() catch @panic("seat.getPointer failed; something wrong");
+                state.pointer.addListener(State, state, pointerListener) catch @panic("pointer.addListener failed; something wrong");
+            }
+            // if (params.capabilities.contains(.pointer) and params.capabilities.contains(.keyboard)) {}
+            // switch (params.capabilities) {
+            //     .pointer => {},
+            //     .keyboard => {},
+            //     .touch => return error.TouchpadIsUnsupported,
+            // }
+        },
+    }
+}
+
 pub fn run(window_state: *window.State) !void {
     var state: State = State{
         .window = window_state,
@@ -91,6 +126,9 @@ pub fn run(window_state: *window.State) !void {
         .surface = undefined,
         .wm_base = undefined,
         .xdg_surface = undefined,
+        .xdg_toplevel = undefined,
+        .seat = undefined,
+        .pointer = undefined,
     };
 
     const display = try wl.Display.connect(null);
@@ -110,12 +148,14 @@ pub fn run(window_state: *window.State) !void {
     defer state.xdg_surface.destroy();
     try state.xdg_surface.addListener(State, &state, xdgSurfaceListener);
 
-    const xdg_toplevel = try state.xdg_surface.getToplevel();
-    defer xdg_toplevel.destroy();
-    try xdg_toplevel.addListener(State, &state, xdgToplevelListener);
-    xdg_toplevel.setTitle(window_state.title);
-    xdg_toplevel.setMinSize(@intCast(window_state.width), @intCast(window_state.height));
-    xdg_toplevel.setMaxSize(@intCast(window_state.width), @intCast(window_state.height));
+    state.xdg_toplevel = try state.xdg_surface.getToplevel();
+    defer state.xdg_toplevel.destroy();
+    try state.xdg_toplevel.addListener(State, &state, xdgToplevelListener);
+    state.xdg_toplevel.setTitle(window_state.title);
+    state.xdg_toplevel.setMinSize(@intCast(window_state.width), @intCast(window_state.height));
+    state.xdg_toplevel.setMaxSize(@intCast(window_state.width), @intCast(window_state.height));
+
+    try state.seat.addListener(State, &state, seatListener);
 
     const buffer = blk: {
         const fd = linux.memfd_create("zimul", 0);

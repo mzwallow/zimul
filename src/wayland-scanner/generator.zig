@@ -115,7 +115,7 @@ fn generateInterface(
     }
 
     try generateListener(allocator, writer, interface.name, interface.events, prefix, prefix_map);
-    try generateEnums(allocator, interface.enums, writer);
+    try generateEnumsV2(writer, allocator, interface.enums);
 
     try writer.print("\npub const interface: common.Interface = .{{\n    .name = \"{s}\",\n    .version = {d},\n    .method_count = {d},\n    .methods = &.{{ {s} }},\n    .event_count = {d},\n    .events = &.{{ {s} }},\n", .{
         interface.name,
@@ -257,6 +257,7 @@ fn generateEnums(allocator: mem.Allocator, enums: std.ArrayList(protocol.Enum), 
 
         if (@"enum".bitfield) {
             try writer.print(
+                \\    _,
                 \\
                 \\pub fn contains(self: {s}, other: {s}) bool {{
                 \\    return @intFromEnum(self) & @intFromEnum(other) != 0;
@@ -274,6 +275,50 @@ fn generateEnums(allocator: mem.Allocator, enums: std.ArrayList(protocol.Enum), 
             \\
             \\
         );
+    }
+}
+
+fn generateEnumsV2(writer: *Io.Writer, allocator: mem.Allocator, enums: ArrayList(protocol.Enum)) !void {
+    for (enums.items) |enum_| {
+        const enum_name = try pascalCase(allocator, enum_.name);
+
+        if (enum_.bitfield) {
+            try writer.print(
+                \\pub const {s} = packed struct(u32) {{
+                \\    const bitfield: bool = true;
+                \\
+                \\
+            , .{enum_name});
+
+            var bit_count: u6 = 0;
+            for (enum_.entries.items) |entry| {
+                std.log.info("value: {d}", .{entry.value});
+                if (entry.value > 0 and std.math.isPowerOfTwo(entry.value)) {
+                    bit_count += 1;
+                    try writer.print("\t{f}: bool = false,\n", .{std.zig.fmtId(entry.name)});
+                }
+            }
+
+            const padding: u6 = 32 - bit_count;
+            if (bit_count > 0) {
+                try writer.print("\n\t_padding: u{d} = 0,\n", .{padding});
+            }
+
+            try writer.writeAll("};\n\n");
+        } else {
+            try writer.print(
+                \\pub const {s} = enum(u32) {{
+                \\    const bitfield: bool = false;
+                \\
+                \\
+            , .{enum_name});
+
+            for (enum_.entries.items) |entry| {
+                try writer.print("\t{s} = {d},\n", .{ entry.name, entry.value });
+            }
+
+            try writer.print("}};\n\n", .{});
+        }
     }
 }
 
@@ -761,8 +806,8 @@ test "generate enums" {
             .{ .name = "none", .value = 0, .since = 1, .summary = null, .description = null },
             .{ .name = "top", .value = 1, .since = 1, .summary = null, .description = null },
             .{ .name = "bottom", .value = 2, .since = 1, .summary = null, .description = null },
-            .{ .name = "left", .value = 3, .since = 1, .summary = null, .description = null },
-            .{ .name = "top_left", .value = 4, .since = 1, .summary = null, .description = null },
+            .{ .name = "left", .value = 4, .since = 1, .summary = null, .description = null },
+            .{ .name = "top_left", .value = 5, .since = 1, .summary = null, .description = null },
             .{ .name = "bottom_left", .value = 6, .since = 1, .summary = null, .description = null },
             .{ .name = "right", .value = 8, .since = 1, .summary = null, .description = null },
             .{ .name = "top_right", .value = 9, .since = 1, .summary = null, .description = null },
@@ -777,7 +822,7 @@ test "generate enums" {
     var stdout_writer = std.Io.File.stderr().writer(testing.io, &buf);
     const stdout = &stdout_writer.interface;
 
-    try generateEnums(allocator, enums, stdout);
+    try generateEnumsV2(stdout, allocator, enums);
     try stdout.flush();
 }
 
